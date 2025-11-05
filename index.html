@@ -1,0 +1,1189 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Siber Savunma - Uzay Nişancısı</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0d1117;
+            color: white;
+            overflow-x: hidden;
+            cursor: crosshair;
+        }
+        
+        .game-screen {
+            position: relative;
+            width: 100%;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            background: #0d1117; 
+        }
+
+        .game-ui {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            z-index: 10;
+        }
+        
+        .score-display, .lives-display, .ulti-display {
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px 20px;
+            border-radius: 10px;
+            font-size: 1.2rem;
+            backdrop-filter: blur(5px);
+            color: #00ffff;
+            border: 1px solid #00ffff50;
+        }
+        
+        .ulti-display.cooling-down {
+            color: #ff0066;
+            border-color: #ff006650;
+        }
+        
+        .game-area {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+
+        .player {
+            position: absolute;
+            bottom: 50px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60px;
+            height: 60px;
+            background: var(--skin-color, #3b82f6);
+            border-radius: 50% 50% 0 0;
+            box-shadow: 0 0 20px var(--skin-color, #3b82f6);
+            transition: left 0.1s linear, box-shadow 0.3s ease, border 0.3s ease;
+            z-index: 5;
+            border: 3px solid transparent;
+        }
+
+        .player::before {
+            content: '';
+            position: absolute;
+            bottom: -10px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 30px;
+            height: 30px;
+            background: var(--skin-color, #3b82f6);
+            clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+        }
+
+        .enemy {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            background: #ff0066;
+            border-radius: 50%;
+            box-shadow: 0 0 15px #ff0066;
+        }
+
+        .meteor {
+            position: absolute;
+            width: 20px;
+            height: 60px;
+            background: linear-gradient(to bottom, #ffae00, #ff4d00);
+            border-radius: 10px;
+            box-shadow: 0 0 20px #ff9900;
+            opacity: 0.9;
+        }
+
+        .bullet {
+            position: absolute;
+            width: 5px;
+            height: 15px;
+            background: #00ff99;
+            border-radius: 5px;
+            box-shadow: 0 0 10px #00ff99;
+        }
+
+        .explosion {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            background: radial-gradient(circle, #ff9900, #ff3300);
+            border-radius: 50%;
+            animation: explode 0.5s forwards;
+            z-index: 99;
+        }
+
+        @keyframes explode {
+            0% { transform: scale(0); opacity: 1; }
+            100% { transform: scale(2); opacity: 0; }
+        }
+
+        .stars {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        .star {
+            position: absolute;
+            background: white;
+            border-radius: 50%;
+            animation: twinkle 5s infinite;
+        }
+
+        @keyframes twinkle {
+            0%, 100% { opacity: 0.2; }
+            50% { opacity: 1; }
+        }
+        
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="min-h-screen bg-gray-950 text-white font-sans">
+        <div class="fixed inset-0 z-0 opacity-5">
+            <div class="bg-repeat h-full w-full" style="background-image: radial-gradient(#2d3748 1px, transparent 1px); background-size: 40px 40px;"></div>
+        </div>
+        
+        <div class="relative z-10 max-w-6xl mx-auto px-4 py-8">
+            <div id="menuScreen" class="flex flex-col items-center justify-center text-center h-[70vh] p-8">
+                <div class="bg-gray-900 p-10 rounded-2xl border-4 border-blue-500/50 shadow-2xl shadow-blue-800/50 backdrop-blur-sm">
+                    <h1 class="text-6xl font-extrabold text-white tracking-tighter mb-2 animate-pulse">
+                        <span class='text-red-500'>SİBER</span> <span class='text-blue-400'>SAVUNMA</span>
+                    </h1>
+                    <p class="text-xl font-mono text-gray-400 mb-8">Uzay Nişancısı | Muş Üniversitesi Projesi</p>
+                    
+                    <div id="welcomeMessage" class="mb-6 text-red-400 font-semibold text-lg">
+                        Sunucuya bağlanılıyor...
+                    </div>
+
+                    <div class="space-y-4 max-w-xs mx-auto">
+                        <button id="startGameBtn" class="px-8 py-3 rounded-xl font-bold uppercase tracking-wider transition-all duration-300 transform bg-indigo-600 text-white shadow-lg shadow-indigo-500/50 hover:bg-indigo-700 active:scale-95 w-full opacity-50 cursor-not-allowed" disabled>
+                            Oturum Gerekli
+                        </button>
+                        <button id="rankingBtn" class="px-8 py-3 rounded-xl font-bold uppercase tracking-wider transition-all duration-300 transform bg-gray-700 text-gray-200 hover:bg-gray-600 active:scale-95 w-full">
+                            🏆 Galaksi Sıralaması
+                        </button>
+                        <button id="marketBtn" class="px-8 py-3 rounded-xl font-bold uppercase tracking-wider transition-all duration-300 transform bg-gray-700 text-gray-200 hover:bg-gray-600 active:scale-95 w-full">
+                            🛒 Gemi Pazarı
+                        </button>
+                        <button id="aboutBtn" class="px-8 py-3 rounded-xl font-bold uppercase tracking-wider transition-all duration-300 transform bg-gray-700 text-gray-200 hover:bg-gray-600 active:scale-95 w-full">
+                            📚 Hakkımızda
+                        </button>
+                         <button id="logoutBtn" class="px-8 py-3 rounded-xl font-bold uppercase tracking-wider transition-all duration-300 transform bg-red-800 text-gray-200 hover:bg-red-700 active:scale-95 w-full hidden">
+                            Çıkış Yap
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="gameScreen" class="hidden">
+                <div class="game-screen">
+                    <div class="game-ui">
+                        <div class="score-display">SKOR: <span id="scoreValue">0</span></div>
+                        <div class="ulti-display hidden" id="ultiDisplay">ULTİ: <span id="ultiStatus">HAZIR</span></div>
+                        <div class="lives-display">CAN: <span id="livesValue">3</span></div>
+                    </div>
+                    <div class="game-area" id="gameArea">
+                        <div class="stars" id="starsContainer"></div>
+                        <div class="player" id="player"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="gameOverScreen" class="hidden flex flex-col items-center justify-center text-center h-[70vh] p-8">
+                <div class="bg-gray-900 p-10 rounded-2xl border-4 border-red-500 shadow-2xl shadow-red-800/50 backdrop-blur-sm">
+                    <h2 class="text-5xl font-extrabold text-red-500 mb-4">MİSYON SONA ERDİ!</h2>
+                    <p class="text-3xl font-mono text-white mb-6">Kazanılan Puan: <span id="finalScore" class="text-yellow-400 font-extrabold">0</span></p>
+                    <div class='text-gray-400 mb-8'>
+                        <p>Skorunuz sıralama ve toplam puanınıza eklendi.</p>
+                    </div>
+                    <div class="space-y-4 max-w-xs mx-auto">
+                        <button id="returnToMenuBtn" class="px-8 py-3 rounded-xl font-bold uppercase tracking-wider transition-all duration-300 transform bg-green-600 text-white shadow-lg shadow-green-500/50 hover:bg-green-700 active:scale-95 w-full">
+                            Menüye Dön
+                        </button>
+                        <button id="viewRankingBtn" class="px-8 py-3 rounded-xl font-bold uppercase tracking-wider transition-all duration-300 transform bg-gray-700 text-gray-200 hover:bg-gray-600 active:scale-95 w-full">
+                            🏆 Sıralamayı Gör
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="usernameModal" class="fixed inset-0 bg-gray-900 bg-opacity-90 z-50 flex items-center justify-center p-4">
+            <div class="bg-gray-800 text-white rounded-xl shadow-2xl w-full max-w-lg overflow-y-auto max-h-[90vh] border border-blue-500/50">
+                <div class="p-6">
+                    <div class="flex justify-between items-center mb-4 border-b border-gray-700 pb-3">
+                        <h2 class="text-2xl font-extrabold text-blue-400">Pilot Kayıt Merkezi</h2>
+                          </div>
+                    <p class="mb-4 text-gray-300">Sıralama listesinde ve oyunda görünmek için benzersiz bir kullanıcı adı girin (Maks. 15 karakter):</p>
+                    <form id="usernameForm" class="flex gap-2">
+                        <input
+                            id="usernameInput"
+                            name="username"
+                            type="text"
+                            maxlength="15"
+                            placeholder="Oyuncu Adı"
+                            class="flex-grow p-3 bg-gray-700 border border-blue-500 rounded-lg text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-400"
+                            autofocus
+                        />
+                        <button type="submit" id="usernameSubmitBtn" class="px-8 py-3 rounded-xl font-bold uppercase tracking-wider transition-all duration-300 transform bg-indigo-600 text-white shadow-lg shadow-indigo-500/50 hover:bg-indigo-700 active:scale-95">
+                            Kaydet
+                        </button>
+                    </form>
+                    <p id="usernameError" class="mt-4 text-sm text-red-400 hidden"></p>
+                </div>
+            </div>
+        </div>
+
+        <div id="rankingModal" class="fixed inset-0 bg-gray-900 bg-opacity-90 z-50 flex items-center justify-center p-4 hidden">
+            <div class="bg-gray-800 text-white rounded-xl shadow-2xl w-full max-w-2xl overflow-y-auto max-h-[90vh] border border-blue-500/50">
+                <div class="p-6">
+                    <div class="flex justify-between items-center mb-4 border-b border-gray-700 pb-3">
+                        <h2 class="text-2xl font-extrabold text-blue-400">🏆 Galaksi Sıralaması (Top 20)</h2>
+                        <button id="closeRankingModal" class="text-gray-400 hover:text-white transition duration-200 text-3xl leading-none">&times;</button>
+                    </div>
+                    <p class='text-gray-400 mb-4'>En yüksek tek oyun skorları.</p>
+                    <div id="rankingContent" class="overflow-x-auto">
+                        <div class="text-center py-8 text-blue-400">Sıralama yükleniyor...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="marketModal" class="fixed inset-0 bg-gray-900 bg-opacity-90 z-50 flex items-center justify-center p-4 hidden">
+            <div class="bg-gray-800 text-white rounded-xl shadow-2xl w-full max-w-lg overflow-y-auto max-h-[90vh] border border-blue-500/50">
+                <div class="p-6">
+                    <div class="flex justify-between items-center mb-4 border-b border-gray-700 pb-3">
+                        <h2 class="text-2xl font-extrabold text-blue-400">🛒 Gemi Pazarı</h2>
+                        <button id="closeMarketModal" class="text-gray-400 hover:text-white transition duration-200 text-3xl leading-none">&times;</button>
+                    </div>
+                    <div id="marketContent" class="text-lg font-bold mb-4 text-center text-yellow-400">
+                        Toplam Puanınız: <span id="totalScore">0</span>
+                    </div>
+                    <div id="skinsContainer" class="space-y-4">
+                        <div class="text-center py-4 text-gray-400">Önce giriş yapmalısın...</div>
+                    </div>
+                    <p class="mt-6 text-sm text-gray-400">Marketten aldığınız skinler kalıcıdır ve Toplam Puanınızdan düşülür.</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="aboutModal" class="fixed inset-0 bg-gray-900 bg-opacity-90 z-50 flex items-center justify-center p-4 hidden">
+            <div class="bg-gray-800 text-white rounded-xl shadow-2xl w-full max-w-lg overflow-y-auto max-h-[90vh] border border-blue-500/50">
+                <div class="p-6">
+                    <div class="flex justify-between items-center mb-4 border-b border-gray-700 pb-3">
+                        <h2 class="text-2xl font-extrabold text-blue-400">Hakkımızda</h2>
+                        <button id="closeAboutModal" class="text-gray-400 hover:text-white transition duration-200 text-3xl leading-none">&times;</button>
+                    </div>
+                    <div class="space-y-4 text-gray-300">
+                        <h3 class="text-xl font-bold text-blue-400">Proje Adı: MUŞ SİBER SAVUNMA (UZAY TEMASI)</h3>
+                        <p>
+                            **Geliştirme Amacı:** Muş Alparslan Üniversitesiiçin Web Tabanlı Oyun Geliştirme dersi/projesi kapsamında, yüksek performanslı DOM/CSS animasyonları ve modern web teknolojilerini kullanan profesyonel bir örnek olarak hazırlanmıştır.
+                        </p>
+                        <div class="border-t border-gray-700 pt-3">
+                            <h4 class="font-semibold text-white">Yapımcılar:</h4>
+                            <ul class="list-disc list-inside ml-4">
+                                <li>Halil İbrahim Eskici</li>
+                                <li>---</li>
+                                <li>--- 3</li>
+                            </ul>
+                        </div>
+                        <p class="text-xs text-gray-500">
+                            **Not:** Oyun, JavaScript DOM ile kontrol edilmektedir.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- YENİ EKLENDİ: FIREBASE CONFIG ---
+        // Kendi Firebase proje ayarlarını buraya yapıştır
+        const firebaseConfig = {
+            apiKey: "AIzaSyCtxhaGd7CgBvfQMLNOYkfjGdouMYH9fIE", // ESKİSİNİ KULLANMA!
+            authDomain: "oyun-e145e.firebaseapp.com",
+            projectId: "oyun-e145e",
+            storageBucket: "oyun-e145e.appspot.com", // 'firebasestorage' değil, .appspot.com olmalı
+            messagingSenderId: "600558322843",
+            appId: "1:600558322843:web:ea7c2bf5d5fb81f95d323e"
+            // databaseURL'e gerek yok, Firestore kullanıyoruz
+        };
+
+        // Firebase'i başlat
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        const auth = firebase.auth();
+
+
+        // --- SABİT DEĞİŞKENLER VE AYARLAR ---
+        const GAME_DURATION = 45;
+        const SCORE_MULTIPLIER = 10;
+        const INITIAL_HEALTH = 3;
+        const ENEMY_SPAWN_INTERVAL = 1000;
+        const BULLET_SPAWN_INTERVAL = 300;
+        const ULTI_COOLDOWN = 60000; 
+
+        const SKIN_PRICES = [
+            { id: 'default', name: 'Varsayılan Gemi', price: 0, color: '#3b82f6' },
+            { id: 'red_fighter', name: 'Kızıl Avcı (Ulti: Taramalı)', price: 500, color: '#ef4444' },
+            { id: 'green_defender', name: 'Yeşil Savunucu (Ulti: Kalkan)', price: 5000, color: '#10b981' },
+            { id: 'yellow_blaster', name: 'Sarı Patlatıcı (Ulti: Bomba)', price: 50000, color: '#f59e0b' }
+        ];
+
+        // --- OYUN DEĞİŞKENLERİ ---
+        let gameState = 'MENU';
+        let currentUserId = null; // YENİ: Firebase user ID'sini tutar
+        let userName = '';
+        
+        // YENİ: userProfile artık Firebase'den yüklenen varsayılan bir nesne
+        let userProfile = {
+            username: '',
+            totalScore: 0,
+            unlockedSkins: ['default'],
+            currentSkin: 'default'
+        };
+
+        let gameVars = {
+            gameActive: false,
+            score: 0,
+            lives: INITIAL_HEALTH,
+            enemies: [],
+            bullets: [],
+            animationId: null,
+            lastEnemyTime: 0,
+            lastBulletTime: 0,
+            playerX: 0,
+            playerY: 0,
+            timerInterval: null,
+            timeLeft: GAME_DURATION,
+            ultiReady: true,
+            isShieldActive: false,
+            isRapidFireActive: false,
+            lastUltiTime: 0
+        };
+
+        // --- DOM ELEMENTLERİ ---
+        const menuScreen = document.getElementById('menuScreen');
+        const gameScreen = document.getElementById('gameScreen');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const usernameModal = document.getElementById('usernameModal');
+        const rankingModal = document.getElementById('rankingModal');
+        const marketModal = document.getElementById('marketModal');
+        const aboutModal = document.getElementById('aboutModal');
+        const gameArea = document.getElementById('gameArea');
+        const player = document.getElementById('player');
+        const starsContainer = document.getElementById('starsContainer');
+        const scoreValue = document.getElementById('scoreValue');
+        const livesValue = document.getElementById('livesValue');
+        const finalScore = document.getElementById('finalScore');
+        const totalScore = document.getElementById('totalScore');
+        const welcomeMessage = document.getElementById('welcomeMessage');
+        const startGameBtn = document.getElementById('startGameBtn');
+        const skinsContainer = document.getElementById('skinsContainer');
+        const ultiDisplay = document.getElementById('ultiDisplay');
+        const ultiStatus = document.getElementById('ultiStatus');
+        const logoutBtn = document.getElementById('logoutBtn');
+        const usernameForm = document.getElementById('usernameForm');
+        const usernameInput = document.getElementById('usernameInput');
+        const usernameError = document.getElementById('usernameError');
+        const usernameSubmitBtn = document.getElementById('usernameSubmitBtn');
+
+
+        // --- YENİ EKLENDİ: FIREBASE API (TEMİZLENMİŞ VERSİYON) ---
+        
+        const firebaseAPI = {
+            // Kullanıcı adı veritabanında var mı diye kontrol et
+            checkUsernameExists: async (username) => {
+                console.log(`Firebase'de kontrol ediliyor: ${username}`);
+                // GERÇEK KOD: 'usernames' koleksiyonunda bu isimde bir doküman var mı diye bak.
+                const snapshot = await db.collection('usernames').doc(username).get();
+                return snapshot.exists;
+            },
+
+            // Yeni kullanıcı için profil ve kullanıcı adı oluştur
+            createUserProfile: async (uid, username) => {
+                console.log(`Firebase'e kaydediliyor: ${uid} -> ${username}`);
+                const defaultProfile = {
+                    username: username,
+                    totalScore: 0,
+                    unlockedSkins: ['default'],
+                    currentSkin: 'default'
+                };
+                
+                // GERÇEK KOD: İki işlemi aynı anda yapmak için 'batch' (toplu işlem) kullan.
+                const batch = db.batch();
+                
+                // 1. Kullanıcı adını 'usernames' koleksiyonuna ekle (hızlı kontrol için)
+                const usernameRef = db.collection('usernames').doc(username);
+                batch.set(usernameRef, { uid: uid });
+                
+                // 2. Kullanıcının profilini 'users' koleksiyonuna ekle
+                const userRef = db.collection('users').doc(uid);
+                batch.set(userRef, defaultProfile);
+                
+                // Her iki işlemi de gerçekleştir
+                await batch.commit();
+                
+                return defaultProfile;
+            },
+
+            // Firebase'den kullanıcı profilini yükle
+            loadUserProfile: async (uid) => {
+                console.log(`Firebase'den yükleniyor: ${uid}`);
+                
+                // GERÇEK KOD: Kullanıcının profil belgesini ID'sine göre çek.
+                const doc = await db.collection('users').doc(uid).get();
+                if (doc.exists) {
+                    return doc.data();
+                } else {
+                    // Kullanıcı var ama profili yoksa (anormal durum)
+                    console.error("Hata: Kullanıcı profili bulunamadı!", uid);
+                    return null; 
+                }
+            },
+
+            // Oyuncunun toplam skorunu güncelle
+            updateTotalScore: async (uid, newTotalScore) => {
+                console.log(`Firebase güncelleniyor: ${uid} -> totalScore: ${newTotalScore}`);
+                // GERÇEK KOD: Sadece 'totalScore' alanını güncelle.
+                await db.collection('users').doc(uid).update({ totalScore: newTotalScore });
+            },
+
+            // Yeni bir yüksek skoru sıralamaya ekle
+            saveGameScore: async (username, score) => {
+                if (score <= 0) return; // 0 puanı kaydetme
+                console.log(`Firebase'e skor kaydediliyor: ${username} -> ${score}`);
+                // GERÇEK KOD: 'highscores' koleksiyonuna yeni bir belge ekle.
+                await db.collection('highscores').add({
+                    username: username,
+                    score: score,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp() // Sunucu saatini kullan
+                });
+            },
+
+            // Sıralama listesini (en yüksek 20) Firebase'den çek
+            getHighScores: async () => {
+                console.log("Firebase'den sıralama çekiliyor...");
+                // GERÇEK KOD: 'highscores' koleksiyonunu skora göre (büyükten küçüğe) sırala ve ilk 20'yi al.
+                const snapshot = await db.collection('highscores')
+                                        .orderBy('score', 'desc')
+                                        .limit(20)
+                                        .get();
+                // Dataları bir diziye çevirip döndür.
+                return snapshot.docs.map(doc => doc.data());
+            },
+            
+            // Skinleri ve puanı kaydet (market alışverişi sonrası)
+            saveUserProfileData: async (uid, profileData) => {
+                console.log(`Firebase'e profil kaydediliyor: ${uid}`);
+                // GERÇEK KOD: Gönderilen profil verisini (örn: { currentSkin: 'id' }) güncelle.
+                await db.collection('users').doc(uid).update(profileData);
+            }
+        };
+
+
+        // --- OYUN BAŞLATMA ---
+        document.addEventListener('DOMContentLoaded', function() {
+            setupEventListeners();
+            createStars();
+            
+            // YENİ: Firebase Auth durumunu dinle
+            auth.onAuthStateChanged(async (user) => {
+                if (user) {
+                    // Kullanıcı giriş yapmış
+                    currentUserId = user.uid;
+                    
+                    // Profili yükle
+                    const profile = await firebaseAPI.loadUserProfile(currentUserId);
+                    if (profile) {
+                        userProfile = profile;
+                        userName = profile.username;
+                        updateWelcomeMessage();
+                        usernameModal.classList.add('hidden');
+                        logoutBtn.classList.remove('hidden');
+                    } else {
+                        // Veritabanında profil yoksa (anormal durum), çıkış yaptır
+                        auth.signOut();
+                    }
+                } else {
+                    // Kullanıcı giriş yapmamış
+                    currentUserId = null;
+                    userName = '';
+                    userProfile = { // Profili sıfırla
+                        username: '',
+                        totalScore: 0,
+                        unlockedSkins: ['default'],
+                        currentSkin: 'default'
+                    };
+                    welcomeMessage.innerHTML = 'Lütfen oynamadan önce bir kullanıcı adı belirleyin.';
+                    welcomeMessage.className = 'mb-6 text-red-400 font-semibold text-lg';
+                    startGameBtn.innerHTML = 'Oturum Gerekli';
+                    startGameBtn.disabled = true;
+                    startGameBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                    logoutBtn.classList.add('hidden');
+                    
+                    // Kullanıcı adı modalını göster
+                    usernameModal.classList.remove('hidden');
+                    usernameSubmitBtn.disabled = false;
+                    usernameSubmitBtn.textContent = 'Kaydet';
+                }
+            });
+        });
+
+        // --- EVENT LISTENER'LAR ---
+        function setupEventListeners() {
+            // YENİ: Kullanıcı adı formu (Kayıt/Benzersizlik kontrolü)
+            usernameForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                const requestedUsername = usernameInput.value.trim();
+                
+                if (requestedUsername.length < 3) {
+                    usernameError.textContent = 'Kullanıcı adı en az 3 karakter olmalı.';
+                    usernameError.classList.remove('hidden');
+                    return;
+                }
+
+                usernameSubmitBtn.disabled = true;
+                usernameSubmitBtn.textContent = 'Kontrol...';
+                usernameError.classList.add('hidden');
+
+                try {
+                    const exists = await firebaseAPI.checkUsernameExists(requestedUsername);
+                    
+                    if (exists) {
+                        // Kullanıcı adı alınmış
+                        usernameError.textContent = 'Bu kullanıcı adı zaten alınmış. Başka bir tane dene.';
+                        usernameError.classList.remove('hidden');
+                        usernameSubmitBtn.disabled = false;
+                        usernameSubmitBtn.textContent = 'Kaydet';
+                    } else {
+                        // Kullanıcı adı uygun, kayıt işlemi
+                        usernameSubmitBtn.textContent = 'Kaydediliyor...';
+                        
+                        // Önce anonim olarak giriş yap
+                        const userCredential = await auth.signInAnonymously();
+                        const uid = userCredential.user.uid;
+                        
+                        // Sonra profili oluştur
+                        const newProfile = await firebaseAPI.createUserProfile(uid, requestedUsername);
+                        
+                        // Global değişkenleri ayarla (onAuthStateChanged de tetiklenecek ama
+                        // biz yine de anında güncelleyelim)
+                        currentUserId = uid;
+                        userProfile = newProfile;
+                        userName = newProfile.username;
+                        
+                        updateWelcomeMessage();
+                        usernameModal.classList.add('hidden');
+                        logoutBtn.classList.remove('hidden');
+                    }
+                } catch (error) {
+                    console.error("Kayıt hatası:", error);
+                    usernameError.textContent = 'Bir hata oluştu. Lütfen tekrar deneyin.';
+                    usernameError.classList.remove('hidden');
+                    usernameSubmitBtn.disabled = false;
+                    usernameSubmitBtn.textContent = 'Kaydet';
+                }
+            });
+            
+            // Menu Buttons
+            startGameBtn.addEventListener('click', startGame);
+            document.getElementById('rankingBtn').addEventListener('click', showRanking);
+            document.getElementById('marketBtn').addEventListener('click', showMarket);
+            document.getElementById('aboutBtn').addEventListener('click', showAbout);
+            logoutBtn.addEventListener('click', () => auth.signOut()); // Çıkış yap
+            
+            // Game Over Buttons
+            document.getElementById('returnToMenuBtn').addEventListener('click', returnToMenu);
+            document.getElementById('viewRankingBtn').addEventListener('click', showRanking);
+            
+            // Modal Close Buttons
+            document.getElementById('closeRankingModal').addEventListener('click', () => rankingModal.classList.add('hidden'));
+            document.getElementById('closeMarketModal').addEventListener('click', () => marketModal.classList.add('hidden'));
+            document.getElementById('closeAboutModal').addEventListener('click', () => aboutModal.classList.add('hidden'));
+        }
+
+        // --- EKRAN YÖNETİMİ ---
+        function showScreen(screen) {
+            menuScreen.classList.add('hidden');
+            gameScreen.classList.add('hidden');
+            gameOverScreen.classList.add('hidden');
+            
+            if (screen === 'menu') {
+                menuScreen.classList.remove('hidden');
+            } else if (screen === 'game') {
+                gameScreen.classList.remove('hidden');
+            } else if (screen === 'gameOver') {
+                gameOverScreen.classList.remove('hidden');
+            }
+        }
+
+        function updateWelcomeMessage() {
+            if (userName) {
+                welcomeMessage.innerHTML = `HOŞ GELDİN, <span class='text-yellow-300 uppercase'>${userName}</span>!<div class='text-base text-gray-400 mt-1'>Toplam Puan: <span class='text-yellow-500'>${userProfile.totalScore}</span></div>`;
+                welcomeMessage.className = 'mb-6 text-green-400 font-semibold text-lg animate-fade-in';
+                startGameBtn.innerHTML = '🚀 Oyuna Başla';
+                startGameBtn.disabled = false;
+                startGameBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+        }
+
+        // --- OYUN FONKSİYONLARI ---
+        function startGame() {
+            if (!currentUserId) return; // Giriş yapılmadıysa başlatma
+            
+            gameVars.score = 0;
+            gameVars.lives = INITIAL_HEALTH;
+            gameVars.enemies = [];
+            gameVars.bullets = [];
+            gameVars.timeLeft = GAME_DURATION;
+            gameVars.lastEnemyTime = 0;
+            
+            gameVars.ultiReady = true;
+            gameVars.isShieldActive = false;
+            gameVars.isRapidFireActive = false;
+            gameVars.lastUltiTime = 0;
+            updateUltiUI(); 
+            
+            scoreValue.textContent = '0';
+            livesValue.textContent = INITIAL_HEALTH;
+            
+            const allDynamicElements = gameArea.querySelectorAll('.enemy, .bullet, .explosion, .meteor');
+            allDynamicElements.forEach(el => el.remove());
+            
+            player.style.left = (gameArea.offsetWidth / 2) - (player.offsetWidth / 2) + 'px';
+            gameVars.playerX = (gameArea.offsetWidth / 2) - (player.offsetWidth / 2);
+            player.style.border = '3px solid transparent'; 
+            
+            const skinColor = SKIN_PRICES.find(s => s.id === userProfile.currentSkin)?.color || '#3b82f6';
+            player.style.setProperty('--skin-color', skinColor);
+            player.style.boxShadow = `0 0 20px ${skinColor}`; 
+            
+            showScreen('game');
+            gameVars.gameActive = true;
+            
+            gameLoop();
+            
+            document.addEventListener('mousemove', handleMouseMove);
+            gameArea.addEventListener('click', activateUlti); 
+            
+            gameVars.timerInterval = setInterval(() => {
+                if (!gameVars.gameActive) return;
+                
+                gameVars.timeLeft--;
+                
+                if (gameVars.timeLeft <= 0) {
+                    endGame();
+                }
+            }, 1000);
+        }
+
+        async function endGame() { // YENİ: Fonksiyon async oldu
+            gameVars.gameActive = false;
+            cancelAnimationFrame(gameVars.animationId);
+            clearInterval(gameVars.timerInterval);
+            document.removeEventListener('mousemove', handleMouseMove);
+            gameArea.removeEventListener('click', activateUlti); 
+            
+            ultiDisplay.classList.add('hidden');
+            
+            const dynamicElements = gameArea.querySelectorAll('.enemy, .bullet, .explosion, .meteor');
+            dynamicElements.forEach(el => el.remove());
+            
+            // Skoru güncelle
+            finalScore.textContent = gameVars.score;
+            
+            // YENİ: Skoru Firebase'e kaydet
+            if (gameVars.score > 0) {
+                // Toplam skoru güncelle
+                userProfile.totalScore += gameVars.score;
+                totalScore.textContent = userProfile.totalScore;
+                
+                // Asenkron olarak veritabanına kaydet
+                try {
+                    await firebaseAPI.saveGameScore(userName, gameVars.score);
+                    await firebaseAPI.updateTotalScore(currentUserId, userProfile.totalScore);
+                } catch (error) {
+                    console.error("Skor kaydetme hatası:", error);
+                }
+            }
+            
+            // Ekranı değiştir
+            showScreen('gameOver');
+        }
+
+        function returnToMenu() {
+            showScreen('menu');
+            // Menüye dönünce hoş geldin mesajını da güncelle (yeni toplam puanı göstersin)
+            updateWelcomeMessage();
+        }
+
+        // --- OYUN MANTIĞI ---
+        function gameLoop() {
+            if (!gameVars.gameActive) {
+                return;
+            }
+            
+            const currentTime = Date.now();
+            
+            if (!gameVars.ultiReady) {
+                const timeSinceUlti = Date.now() - gameVars.lastUltiTime;
+                if (timeSinceUlti > ULTI_COOLDOWN) {
+                    gameVars.ultiReady = true;
+                    updateUltiUI();
+                }
+            }
+            
+            const elapsedSeconds = GAME_DURATION - gameVars.timeLeft;
+            const difficultyMultiplier = 1 + (elapsedSeconds / GAME_DURATION) * 0.8; 
+            const currentSpawnInterval = ENEMY_SPAWN_INTERVAL / difficultyMultiplier; 
+            
+            if (currentTime - gameVars.lastEnemyTime > currentSpawnInterval) {
+                createEnemy(difficultyMultiplier); 
+                gameVars.lastEnemyTime = currentTime;
+            }
+            
+            const currentBulletInterval = gameVars.isRapidFireActive ? 50 : BULLET_SPAWN_INTERVAL;
+            if (currentTime - gameVars.lastBulletTime > currentBulletInterval) {
+                createBullet();
+                gameVars.lastBulletTime = currentTime;
+            }
+            
+            moveEnemies();
+            moveBullets();
+            checkCollisions();
+            
+            gameVars.animationId = requestAnimationFrame(gameLoop);
+        }
+
+        function handleMouseMove(e) {
+            if (!gameVars.gameActive) return;
+            
+            const gameRect = gameArea.getBoundingClientRect();
+            let newPlayerX = e.clientX - gameRect.left - player.offsetWidth / 2;
+            
+            if (newPlayerX < 0) newPlayerX = 0;
+            if (newPlayerX > gameRect.width - player.offsetWidth) {
+                newPlayerX = gameRect.width - player.offsetWidth;
+            }
+            
+            gameVars.playerX = newPlayerX;
+            player.style.left = newPlayerX + 'px';
+        }
+
+        function createStars() {
+            starsContainer.innerHTML = '';
+            for (let i = 0; i < 100; i++) {
+                const star = document.createElement('div');
+                star.className = 'star';
+                star.style.width = Math.random() * 3 + 'px';
+                star.style.height = star.style.width;
+                star.style.left = Math.random() * 100 + '%';
+                star.style.top = Math.random() * 100 + '%';
+                star.style.animationDelay = Math.random() * 5 + 's';
+                starsContainer.appendChild(star);
+            }
+        }
+
+        function createEnemy(multiplier = 1) {
+            const isMeteor = Math.random() < 0.15; 
+            
+            const element = document.createElement('div');
+            let speed, width, height;
+
+            if (isMeteor) {
+                element.className = 'meteor';
+                width = 20;
+                height = 60;
+                speed = (3 + Math.random() * 3) * multiplier; 
+            } else {
+                element.className = 'enemy';
+                width = 40;
+                height = 40;
+                speed = (1 + Math.random() * 2) * multiplier;
+            }
+            
+            element.style.left = Math.random() * (gameArea.offsetWidth - width) + 'px';
+            element.style.top = `-${height}px`;
+            gameArea.appendChild(element);
+            
+            gameVars.enemies.push({
+                element: element,
+                x: parseInt(element.style.left),
+                y: -height,
+                speed: speed,
+                width: width,
+                height: height,
+                isMeteor: isMeteor
+            });
+        }
+
+        function createBullet() {
+            if (!player || !gameVars.gameActive) return;
+            
+            const bullet = document.createElement('div');
+            bullet.className = 'bullet';
+            
+            const bulletX = gameVars.playerX + player.offsetWidth / 2 - 2.5;
+            const bulletY = player.offsetTop - 15;
+            
+            bullet.style.left = bulletX + 'px';
+            bullet.style.top = bulletY + 'px';
+            gameArea.appendChild(bullet);
+            
+            gameVars.bullets.push({
+                element: bullet,
+                x: bulletX,
+                y: bulletY,
+                speed: 15,
+                width: 5,
+                height: 15
+            });
+        }
+
+        function moveEnemies() {
+            for (let i = gameVars.enemies.length - 1; i >= 0; i--) {
+                const enemy = gameVars.enemies[i];
+                enemy.y += enemy.speed;
+                enemy.element.style.top = enemy.y + 'px';
+                
+                if (enemy.y > gameArea.offsetHeight) {
+                    enemy.element.remove();
+                    gameVars.enemies.splice(i, 1);
+                    if (!gameVars.isShieldActive) {
+                        loseLife(enemy.isMeteor ? 2 : 1); 
+                    }
+                }
+            }
+        }
+
+        function moveBullets() {
+            for (let i = gameVars.bullets.length - 1; i >= 0; i--) {
+                const bullet = gameVars.bullets[i];
+                bullet.y -= bullet.speed;
+                bullet.element.style.top = bullet.y + 'px';
+                
+                if (bullet.y < -15) {
+                    bullet.element.remove();
+                    gameVars.bullets.splice(i, 1);
+                }
+            }
+        }
+
+        function checkCollisions() {
+            // Mermi-Düşman
+            for (let i = gameVars.bullets.length - 1; i >= 0; i--) {
+                const bullet = gameVars.bullets[i];
+                
+                for (let j = gameVars.enemies.length - 1; j >= 0; j--) {
+                    const enemy = gameVars.enemies[j];
+                    
+                    if (
+                        bullet.x < enemy.x + enemy.width &&
+                        bullet.x + bullet.width > enemy.x &&
+                        bullet.y < enemy.y + enemy.height &&
+                        bullet.y + bullet.height > enemy.y
+                    ) {
+                        createExplosion(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2);
+                        bullet.element.remove();
+                        gameVars.bullets.splice(i, 1);
+                        enemy.element.remove();
+                        gameVars.enemies.splice(j, 1);
+                        gameVars.score += (enemy.isMeteor ? SCORE_MULTIPLIER * 2 : SCORE_MULTIPLIER);
+                        scoreValue.textContent = gameVars.score;
+                        break;
+                    }
+                }
+            }
+            
+            if (gameVars.isShieldActive) return;
+
+            // Oyuncu-Düşman
+            const playerWidth = 60;
+            const playerHeight = 60;
+            const playerY = player.offsetTop;
+            
+            for (let i = gameVars.enemies.length - 1; i >= 0; i--) {
+                const enemy = gameVars.enemies[i];
+                
+                if (
+                    gameVars.playerX < enemy.x + enemy.width &&
+                    gameVars.playerX + playerWidth > enemy.x &&
+                    playerY < enemy.y + enemy.height &&
+                    playerY + playerHeight > enemy.y
+                ) {
+                    createExplosion(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2);
+                    enemy.element.remove();
+                    gameVars.enemies.splice(i, 1);
+                    loseLife(enemy.isMeteor ? 2 : 1);
+                    break;
+                }
+            }
+        }
+
+        function loseLife(amount = 1) {
+            if (!gameVars.gameActive) return;
+            gameVars.lives -= amount;
+            
+            if (gameVars.lives < 0) {
+                 gameVars.lives = 0;
+            }
+            livesValue.textContent = gameVars.lives;
+            
+            if (gameVars.lives <= 0) {
+                endGame();
+            }
+        }
+
+        function createExplosion(x, y) {
+            const explosion = document.createElement('div');
+            explosion.className = 'explosion';
+            explosion.style.left = (x - 25) + 'px';
+            explosion.style.top = (y - 25) + 'px';
+            gameArea.appendChild(explosion);
+            
+            setTimeout(() => {
+                explosion.remove();
+            }, 500);
+        }
+
+        // --- ULTİ FONKSİYONLARI ---
+
+        function updateUltiUI() {
+            ultiDisplay.classList.toggle('hidden', userProfile.currentSkin === 'default');
+
+            if (gameVars.ultiReady) {
+                ultiStatus.textContent = 'HAZIR';
+                ultiDisplay.classList.remove('cooling-down');
+            } else {
+                ultiStatus.textContent = 'KULLANILDI';
+                ultiDisplay.classList.add('cooling-down');
+            }
+        }
+
+        function activateUlti() {
+            if (!gameVars.gameActive || !gameVars.ultiReady || userProfile.currentSkin === 'default') {
+                return;
+            }
+            
+            gameVars.ultiReady = false;
+            gameVars.lastUltiTime = Date.now();
+            updateUltiUI();
+            
+            switch (userProfile.currentSkin) {
+                case 'red_fighter':
+                    ulti_RapidFire();
+                    break;
+                case 'green_defender':
+                    ulti_Shield();
+                    break;
+                case 'yellow_blaster':
+                    ulti_Nuke();
+                    break;
+            }
+        }
+
+        function ulti_Nuke() {
+            const enemiesToExplode = [...gameVars.enemies];
+            enemiesToExplode.forEach(enemy => {
+                createExplosion(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2);
+                gameVars.score += (enemy.isMeteor ? SCORE_MULTIPLIER * 2 : SCORE_MULTIPLIER);
+            });
+            gameArea.querySelectorAll('.enemy, .meteor').forEach(el => el.remove());
+            gameVars.enemies = [];
+            scoreValue.textContent = gameVars.score;
+        }
+
+        function ulti_Shield() {
+            gameVars.isShieldActive = true;
+            player.style.boxShadow = '0 0 40px #00ffff';
+            player.style.border = '3px solid #00ffff';
+
+            setTimeout(() => {
+                gameVars.isShieldActive = false;
+                const skinColor = SKIN_PRICES.find(s => s.id === userProfile.currentSkin)?.color || '#3b82f6';
+                player.style.boxShadow = `0 0 20px ${skinColor}`;
+                player.style.border = '3px solid transparent';
+            }, 5000); 
+        }
+
+        function ulti_RapidFire() {
+            gameVars.isRapidFireActive = true;
+            setTimeout(() => {
+                gameVars.isRapidFireActive = false;
+            }, 3000);
+        }
+
+
+        // --- MODAL FONKSİYONLARI ---
+        async function showRanking() { // YENİ: async oldu
+            rankingModal.classList.remove('hidden');
+            const rankingContent = document.getElementById('rankingContent');
+            rankingContent.innerHTML = '<div class="text-center py-8 text-blue-400">Sıralama yükleniyor...</div>';
+
+            try {
+                // YENİ: Sıralamayı Firebase'den çek
+                const highScores = await firebaseAPI.getHighScores();
+                
+                if (highScores.length === 0) {
+                     rankingContent.innerHTML = '<div class="text-center py-8 text-gray-400">Henüz hiç skor kaydedilmemiş.</div>';
+                     return;
+                }
+
+                let rankingHTML = `
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-700">
+                            <thead>
+                                <tr class="text-left text-gray-400 text-sm">
+                                    <th class="px-4 py-2">Sıra</th>
+                                    <th class="px-4 py-2">Kullanıcı Adı</th>
+                                    <th class="px-4 py-2 text-right">Yüksek Skor</th>
+                                    <th class="px-4 py-2 text-right">Oynanma Zamanı</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-800">
+                `;
+                
+                highScores.forEach((entry, index) => {
+                    // Firebase timestamp'ini Date nesnesine çevir
+                    const date = entry.timestamp ? entry.timestamp.toDate().toLocaleDateString('tr-TR') : 'Bilinmiyor';
+                    const isCurrentUser = entry.username === userName;
+                    
+                    rankingHTML += `
+                        <tr class="transition-all duration-300 ${isCurrentUser ? 'bg-blue-900/50 text-yellow-400 font-bold' : 'text-gray-200 hover:bg-gray-700/50'}">
+                            <td class="px-4 py-2">${index + 1}</td>
+                            <td class="px-4 py-2">${entry.username}</td>
+                            <td class="px-4 py-2 text-right">${entry.score}</td>
+                            <td class="px-4 py-2 text-right text-xs">${date}</td>
+                        </tr>
+                    `;
+                });
+                
+                rankingHTML += `</tbody></table></div>`;
+                rankingContent.innerHTML = rankingHTML;
+
+            } catch (error) {
+                console.error("Sıralama yüklenemedi:", error);
+                rankingContent.innerHTML = '<div class="text-center py-8 text-red-400">Sıralama yüklenirken bir hata oluştu.</div>';
+            }
+        }
+
+        function showMarket() {
+            if (!currentUserId) {
+                // Giriş yapılmadıysa marketi göstermeden önce uyar
+                alert("Marketi görmek için önce bir kullanıcı adı oluşturmalısın.");
+                return;
+            }
+            marketModal.classList.remove('hidden');
+            totalScore.textContent = userProfile.totalScore;
+            loadSkins();
+        }
+
+        function loadSkins() {
+            skinsContainer.innerHTML = '';
+            
+            SKIN_PRICES.forEach(skin => {
+                const isUnlocked = userProfile.unlockedSkins.includes(skin.id);
+                const isEquipped = skin.id === userProfile.currentSkin;
+                
+                const skinElement = document.createElement('div');
+                skinElement.className = `p-4 rounded-lg flex justify-between items-center transition-all duration-300 ${isEquipped ? 'bg-blue-900/70 border-2 border-yellow-500' : 'bg-gray-700 hover:bg-gray-600'}`;
+                
+                skinElement.innerHTML = `
+                    <div class="flex flex-col">
+                        <span class="${isEquipped ? 'text-yellow-300' : 'text-white'} text-xl font-extrabold">${skin.name}</span>
+                        <span class="text-sm text-gray-400">
+                            ${isUnlocked ? 'AÇIK' : `Fiyat: ${skin.price} Puan`}
+                        </span>
+                    </div>
+                    <div id="skinBtn-${skin.id}">
+                        ${isEquipped 
+                            ? '<button class="px-4 py-2 rounded-lg font-bold bg-green-600 text-white opacity-50 cursor-not-allowed" disabled>AKTİF</button>' 
+                            : isUnlocked 
+                                ? `<button class="px-4 py-2 rounded-lg font-bold bg-indigo-600 text-white hover:bg-indigo-700" onclick="equipSkin('${skin.id}')">KUŞAN</button>`
+                                : `<button class="px-4 py-2 rounded-lg font-bold bg-indigo-600 text-white hover:bg-indigo-700 ${userProfile.totalScore < skin.price ? 'opacity-50 cursor-not-allowed' : ''}" ${userProfile.totalScore < skin.price ? 'disabled' : ''} onclick="buySkin('${skin.id}')">${userProfile.totalScore < skin.price ? 'YETERSİZ' : 'SATIN AL'}</button>`
+                        }
+                    </div>
+                `;
+                
+                skinsContainer.appendChild(skinElement);
+            });
+        }
+
+        async function buySkin(skinId) { // YENİ: async oldu
+            const skin = SKIN_PRICES.find(s => s.id === skinId);
+            if (!skin || !currentUserId) return;
+            
+            if (userProfile.totalScore >= skin.price) {
+                userProfile.totalScore -= skin.price;
+                userProfile.unlockedSkins.push(skinId);
+                totalScore.textContent = userProfile.totalScore;
+                
+                // Değişiklikleri Firebase'e kaydet
+                try {
+                    await firebaseAPI.saveUserProfileData(currentUserId, {
+                        totalScore: userProfile.totalScore,
+                        unlockedSkins: userProfile.unlockedSkins
+                    });
+                } catch (error) {
+                    console.error("Skin alımı kaydedilemedi:", error);
+                    // Hata durumunda (isteğe bağlı) işlemi geri alabilirsin
+                }
+                
+                loadSkins(); // Marketi yenile
+            }
+        }
+
+        async function equipSkin(skinId) { // YENİ: async oldu
+            if (userProfile.unlockedSkins.includes(skinId) && currentUserId) {
+                userProfile.currentSkin = skinId;
+                
+                // Değişikliği Firebase'e kaydet
+                try {
+                    await firebaseAPI.saveUserProfileData(currentUserId, {
+                        currentSkin: skinId
+                    });
+                } catch (error) {
+                    console.error("Skin kuşanma kaydedilemedi:", error);
+                }
+                
+                loadSkins(); // Marketi yenile
+                
+                // Gemi rengini anında değiştir (eğer oyun alanındaysa)
+                if (gameVars.gameActive) {
+                    const skinColor = SKIN_PRICES.find(s => s.id === skinId)?.color || '#3b82f6';
+                    player.style.setProperty('--skin-color', skinColor);
+                    player.style.boxShadow = `0 0 20px ${skinColor}`;
+                    player.style.border = '3px solid transparent';
+                }
+            }
+        }
+
+        function showAbout() {
+            // DÜZELTİLDİ: 'hidden' sınıfını kaldır
+            aboutModal.classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>
