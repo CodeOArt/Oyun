@@ -1,0 +1,1609 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Köyün Laneti - Vampir Köylü Oyunu</title>
+    <!-- Tailwind CSS CDN'i yükle -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React ve ReactDOM CDN'lerini yükle -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <!-- Babel CDN'ini yükle (JSX'i tarayıcıda derlemek için) -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Lucide Icons'ı SVG formatında kullanmak için (JavaScript içinde kullanılacak) -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- Oyunun özel CSS stilleri -->
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        html, body {
+            font-family: 'Inter', sans-serif;
+            min-height: 100vh;
+            background-color: #111827;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #b91c1c; /* red-700 */
+            border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #374151; /* gray-700 */
+        }
+        .animate-pulse-slow {
+            animation: pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        .animate-spin-slow {
+            animation: spin 60s linear infinite;
+        }
+        @keyframes fade-in {
+            0% { opacity: 0; transform: translateY(10px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+            animation: fade-in 0.5s ease-out forwards;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <!-- Firebase Kütüphaneleri -->
+    <script type="module">
+        // Firebase Modüllerini yükle
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, updateDoc, onSnapshot, collection, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+        // Global değişkenlere ata (JSX kodunun erişebilmesi için)
+        window.initializeApp = initializeApp;
+        window.getAuth = getAuth;
+        window.signInAnonymously = signInAnonymously;
+        window.signInWithCustomToken = signInWithCustomToken;
+        window.getFirestore = getFirestore;
+        window.doc = doc;
+        window.setDoc = setDoc;
+        window.getDoc = getDoc;
+        window.updateDoc = updateDoc;
+        window.onSnapshot = onSnapshot;
+        window.collection = collection;
+        window.deleteDoc = deleteDoc;
+    </script>
+
+    <!-- React/JSX Kodumuz -->
+    <script type="text/babel">
+        // Lucide Icons'ı JSX içinde kullanabilmek için global nesneden çekiyoruz
+        const { AlertTriangle, Home, LogOut, MessageSquare, Moon, Sun, Users, Zap } = window.lucide;
+        const { useState, useEffect, useCallback, useMemo, useRef } = React;
+
+        // --- Sabitler ve Dışsal Değişkenler (Canvas Ortamını Taklit Etme) ---
+        
+        const __app_id = 'local-vampir-koylu-app'; 
+        const __firebase_config = '{}'; 
+        const __initial_auth_token = undefined; 
+
+        // Firebase referansları (manuel başlatılacak)
+        let app;
+        let db;
+        let auth;
+        let authInitialized = false;
+
+        // --- Firebase'i Başlatma ve Auth Kontrolü ---
+        const initializeFirebase = async (setUserId, setLoading, setError) => {
+            if (authInitialized) return;
+
+            try {
+                if (typeof window.initializeApp === 'undefined') {
+                    // Bu senaryo, Firebase kütüphaneleri yüklenemediğinde gerçekleşir (genellikle internet veya CDN hatası)
+                    throw new Error("Firebase kütüphaneleri yüklenemedi.");
+                }
+
+                // Varsayılan, boş config ile başlat
+                // Gerçek bir Firebase projesi kullanmıyorsanız, bu config'i kendi projenizle değiştirmeniz gerekir.
+                const config = JSON.parse(__firebase_config) || {
+                    apiKey: "AIzaSyCtxhaGd7CgBvfQMLNOYkfjGdouMYH9fIE", 
+                    authDomain: "oyun-e145e.firebaseapp.com", 
+                    projectId: "oyun-e145e"
+                };
+
+                app = window.initializeApp(config);
+                db = window.getFirestore(app);
+                auth = window.getAuth(app);
+                
+                let currentUserId;
+                if (__initial_auth_token) {
+                    const userCredential = await window.signInWithCustomToken(auth, __initial_auth_token);
+                    currentUserId = userCredential.user.uid;
+                } else {
+                    const userCredential = await window.signInAnonymously(auth);
+                    currentUserId = userCredential.user.uid;
+                }
+                
+                setUserId(currentUserId);
+                authInitialized = true;
+
+            } catch (e) {
+                console.warn("Firebase başlatma/Auth hatası. Anonim ID ile devam ediliyor. db/auth null kalacak:", e.message);
+                // Firebase başlatılamasa bile, oyunu anonim bir ID ile çalıştırmaya devam et
+                setUserId(crypto.randomUUID());
+                // Hata durumunda db ve auth null kalır, bu da handleCreateRoom'da hata vermesine neden olur.
+            } finally {
+                setLoading(false);
+            }
+        };
+
+
+        // Oyun Rolleri ve Dağıtımı
+        const ROLES_6 = ['Vampire', 'Vampire', 'Seer', 'Doctor', 'Villager', 'Villager'];
+        const ROLES_8 = ['Vampire', 'Vampire', 'Seer', 'Doctor', 'Protector', 'Jester', 'Villager', 'Villager']; 
+        const ROLES_10 = ['Vampire', 'Vampire', 'Seer', 'Doctor', 'Protector', 'Jester', 'Villager', 'Villager', 'Villager', 'Villager']; 
+
+        const ROLE_DETAILS = {
+          Vampire: { tr: 'Vampir', team: 'Vampires', nightAction: true, description: 'Her gece bir köylüyü öldürür.' },
+          Villager: { tr: 'Köylü', team: 'Villagers', nightAction: false, description: 'Masum bir köylüdür, doğru kişiyi bulmaya çalışır.' },
+          Seer: { tr: 'Kahin', team: 'Villagers', nightAction: true, description: 'Her gece bir oyuncunun rolünü öğrenir.' },
+          Doctor: { tr: 'Doktor', team: 'Villagers', nightAction: true, description: 'Her gece bir oyuncuyu (kendini bile) kurtarır.' },
+          Protector: { tr: 'Korumacı', team: 'Villagers', nightAction: true, description: 'Her gece bir oyuncuyu korur. Kendini üst üste koruyamaz.' },
+          Jester: { tr: 'Soytarı', team: 'Neutral', nightAction: false, description: 'Amacı gündüz oylamasında linç edilmektir. Linç edilirse oyunu kazanır.' }, 
+        };
+
+        const getRoleDistribution = (playerCount) => {
+            if (playerCount >= 10) return ROLES_10;
+            if (playerCount >= 8) return ROLES_8;
+            return ROLES_6;
+        };
+
+        // Utility
+        const getRoomDocRef = (roomId) => {
+          if (!db) return null;
+          return window.doc(db, `/artifacts/${__app_id}/public/data/rooms/${roomId}`);
+        };
+
+        const generateRoomCode = () => {
+          return Math.random().toString(36).substring(2, 6).toUpperCase();
+        };
+
+        // --- KOMUT TABANLI STİL VE RENKLER (Tailwind) ---
+
+        const theme = {
+            bg: "bg-gray-900",
+            card: "bg-gray-800/90 backdrop-blur-sm shadow-2xl border border-red-900/50",
+            text: "text-red-300",
+            text_light: "text-white",
+            button: "bg-red-700 hover:bg-red-800 text-white font-bold py-3 px-6 rounded-lg transition duration-300 transform hover:scale-[1.02] shadow-xl shadow-red-900/50",
+            button_danger: "bg-gray-600 hover:bg-gray-700 text-gray-300 py-3 px-6 rounded-lg transition duration-300 shadow-lg",
+            input: "bg-gray-700 border border-red-700 text-white placeholder-gray-500 py-3 px-4 rounded-lg focus:ring-red-500 focus:border-red-500",
+            role_card: "p-6 rounded-xl border-4 transition-all duration-500 ease-in-out",
+            villager_color: "border-green-600 bg-green-900/30 text-green-300",
+            vampire_color: "border-red-600 bg-red-900/30 text-red-300",
+            neutral_color: "border-gray-600 bg-gray-900/30 text-gray-300",
+        };
+
+        // --- UTILITY COMPONENT: Mesaj Kutusu ---
+
+        const MessageDisplay = ({ title, message, icon }) => (
+            <div className={`${theme.card} p-6 mb-4 text-center rounded-xl animate-fade-in`}>
+                <div className="flex justify-center items-center mb-4 text-red-400">
+                    {icon}
+                </div>
+                <h3 className="text-xl font-semibold mb-2 text-white">{title}</h3>
+                <p className="text-gray-400">{message}</p>
+            </div>
+        );
+
+        // --- UTILITY COMPONENT: Gece/Gündüz Göstergesi ---
+
+        const DayNightIndicator = ({ dayNumber, isNight, phase, isGameOver }) => {
+            const isVoting = phase === 'VOTING';
+            const isMuhtarVoting = phase === 'MUHTAR_VOTING';
+            const transitionClass = isNight ? 'bg-gray-950 shadow-inner shadow-indigo-900' : 'bg-amber-100 shadow-inner shadow-yellow-500';
+            
+            let text;
+            if (isMuhtarVoting) {
+                text = 'Muhtar Seçimi';
+            } else if (isVoting) {
+                text = 'Oylama Zamanı';
+            } else if (isNight) {
+                text = 'Geceler Başlıyor...';
+            } else {
+                text = 'Tartışma Zamanı';
+            }
+
+            return (
+                <div className={`p-4 rounded-xl mb-6 flex items-center justify-between ${theme.card} ${transitionClass}`}>
+                    <div className='flex items-center space-x-3'>
+                        {isNight ? (
+                            <Moon className="w-8 h-8 text-indigo-400 animate-pulse" />
+                        ) : (
+                            <Sun className="w-8 h-8 text-yellow-500 animate-spin-slow" />
+                        )}
+                        <h3 className="text-2xl font-extrabold text-white">
+                            {isGameOver ? 'Oyun Bitti' : (isNight ? 'Gece' : `Gündüz ${dayNumber}. Gün`)}
+                        </h3>
+                    </div>
+                    <span className={`px-4 py-1 text-sm font-semibold rounded-full ${isNight ? 'bg-indigo-700 text-indigo-100' : 'bg-yellow-700 text-yellow-100'}`}>
+                        {text}
+                    </span>
+                </div>
+            );
+        };
+
+
+        // --- CHAT BİLEŞENİ ---
+
+        const ChatComponent = ({ db, userId, userName, gameState, playerRole, isDead, isVampire, currentPhase }) => {
+            const [messages, setMessages] = useState([]);
+            const [newMessage, setNewMessage] = useState('');
+            const chatContainerRef = useRef(null);
+            const roomId = gameState.roomId;
+
+            const teamChatActive = isVampire && currentPhase === 'NIGHT_ACTIONS';
+            const generalChatActive = !isDead && (currentPhase === 'DISCUSSION' || currentPhase === 'MUHTAR_VOTING' || currentPhase === 'VOTING');
+            const ghostChatActive = isDead;
+
+            let chatPath;
+            let chatName;
+
+            if (ghostChatActive) {
+                chatPath = 'ghostChat';
+                chatName = 'Hayalet Sohbeti (Ölüler)';
+            } else if (teamChatActive) {
+                chatPath = 'vampireChat';
+                chatName = 'Vampir Sohbeti (Takım)';
+            } else if (generalChatActive) {
+                chatPath = 'generalChat';
+                chatName = 'Genel Sohbet (Gündüz)';
+            } else {
+                chatName = 'Sohbet Kapalı';
+            }
+
+            // Mesajları Dinle
+            useEffect(() => {
+                if (!roomId || !chatPath || !db) return;
+
+                const roomRef = getRoomDocRef(roomId);
+                if (!roomRef) return;
+
+                // Sohbet mesajlarını al
+                const unsubscribe = window.onSnapshot(roomRef, (docSnap) => {
+                    if (docSnap.exists() && docSnap.data()[chatPath]) {
+                        setMessages(docSnap.data()[chatPath].slice(-50));
+                    } else {
+                        setMessages([]);
+                    }
+                }, (error) => {
+                    console.error("Chat dinleme hatası:", error);
+                });
+
+                return () => unsubscribe();
+            }, [roomId, chatPath, db]);
+
+
+            // Scroll'u En Aşağı Kaydır
+            useEffect(() => {
+                if (chatContainerRef.current) {
+                    chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+                }
+            }, [messages]);
+
+            // Mesaj Gönder
+            const sendMessage = async (e) => {
+                e.preventDefault();
+                if (!newMessage.trim() || !roomId || !chatPath || !db) return;
+
+                const messageData = {
+                    id: Date.now().toString(),
+                    senderId: userId,
+                    senderName: userName,
+                    text: newMessage.trim(),
+                    timestamp: new Date().toISOString(),
+                    role: chatPath === 'vampireChat' ? 'Takım Üyesi' : ROLE_DETAILS[playerRole]?.tr || 'Oyuncu',
+                };
+
+                try {
+                    const roomRef = getRoomDocRef(roomId);
+                    if (!roomRef) return;
+                    
+                    const docSnap = await window.getDoc(roomRef);
+
+                    if (docSnap.exists()) {
+                        const currentChat = docSnap.data()[chatPath] || [];
+                        const newChat = [...currentChat.slice(-50), messageData];
+
+                        await window.updateDoc(roomRef, {
+                            [chatPath]: newChat,
+                        });
+                        setNewMessage('');
+                    }
+                } catch (error) {
+                    console.error("Mesaj gönderme hatası:", error);
+                }
+            };
+
+            const isChatEnabled = teamChatActive || generalChatActive || ghostChatActive;
+
+            return (
+                <div className={`${theme.card} p-4 flex flex-col h-full rounded-xl`}>
+                    <h4 className="text-xl font-bold mb-3 text-white border-b border-red-800 pb-2 flex items-center">
+                        <MessageSquare className="w-5 h-5 mr-2 text-red-400" />
+                        {chatName}
+                    </h4>
+
+                    {/* Mesaj Listesi */}
+                    <div ref={chatContainerRef} className="flex-1 overflow-y-auto space-y-3 p-2 custom-scrollbar">
+                        {messages.length === 0 && <p className="text-center text-gray-500 italic">Henüz mesaj yok.</p>}
+                        {messages.map((msg) => (
+                            <div key={msg.id} className={`p-3 rounded-lg ${msg.senderId === userId ? 'ml-auto bg-red-900/50' : 'mr-auto bg-gray-700/50'} max-w-[80%]`}>
+                                <div className={`font-semibold text-sm ${msg.senderId === userId ? 'text-white' : 'text-red-300'}`}>
+                                    {msg.senderId === userId ? 'Sen' : msg.senderName}
+                                    <span className="ml-2 text-xs text-gray-400">({msg.role})</span>
+                                </div>
+                                <p className="text-gray-200 mt-1 break-words">{msg.text}</p>
+                                <span className="block text-xs text-gray-500 text-right mt-1">
+                                  {new Date(msg.timestamp).toLocaleTimeString('tr-TR', {hour: '2-digit', minute:'2-digit'})}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Mesaj Girişi */}
+                    <form onSubmit={sendMessage} className="mt-4 flex">
+                        <input
+                            type="text"
+                            value={newMessage}
+                            onChange={(e) => setNewMessage(e.target.value)}
+                            placeholder={isChatEnabled ? "Mesajınızı yazın..." : "Sohbet bu aşamada kapalı."}
+                            className={`flex-1 ${theme.input} mr-2`}
+                            disabled={!isChatEnabled}
+                        />
+                        <button
+                            type="submit"
+                            className={`${theme.button} ${isChatEnabled ? '' : 'opacity-50 cursor-not-allowed'}`}
+                            disabled={!isChatEnabled}
+                        >
+                            Gönder
+                        </button>
+                    </form>
+                </div>
+            );
+        };
+
+
+        // --- OYUN EKRANI BİLEŞENİ ---
+
+        const GameScreen = ({ db, userId, userName, gameState, handleLeaveRoom, handleNextPhase, handleDayVote, handleNightAction }) => {
+            const { players, state, dayNumber, phase, hostId, roomId, currentKilled, currentSaved, winner, votingResults, muhtarId } = gameState;
+            const muhtar = muhtarId ? players[muhtarId] : null;
+
+            const myPlayer = players[userId] || {};
+
+            const isHost = userId === hostId;
+            const isAlive = myPlayer.status === 'alive';
+            const myRole = myPlayer.role;
+            const roleDetails = ROLE_DETAILS[myRole] || {};
+            const isVampire = myRole === 'Vampire';
+            const isSeer = myRole === 'Seer';
+            const isJester = myRole === 'Jester'; 
+
+            const alivePlayers = useMemo(() => Object.entries(players).filter(([, p]) => p.status === 'alive'), [players]);
+
+            const isNight = state === 'NIGHT_ACTIONS' || phase === 'NIGHT_ACTIONS';
+            const isRoleReveal = state === 'ROLE_REVEAL';
+            const isVoting = phase === 'VOTING';
+            const isMuhtarVoting = phase === 'MUHTAR_VOTING';
+
+            const [revealed, setRevealed] = useState(false);
+            const [selectedTarget, setSelectedTarget] = useState(null);
+            const [actionMessage, setActionMessage] = useState(null);
+
+
+            // Rol Açma Animasyonu
+            useEffect(() => {
+                if (isRoleReveal && !revealed) {
+                    setTimeout(() => setRevealed(true), 2000);
+                }
+            }, [isRoleReveal, revealed]);
+
+            // Aksiyon mesajlarını temizle
+            useEffect(() => {
+                if (!isNight) {
+                    setActionMessage(null);
+                }
+            }, [isNight]);
+
+            // Gece Aksiyonları
+            const handleNightActionClick = (targetId) => {
+                if (!roleDetails.nightAction || !isAlive || !isNight) {
+                    setActionMessage("Şu an hareket etme yetkiniz yok.");
+                    return;
+                }
+
+                // Korumacı (Protector) Kısıtlaması
+                if (myRole === 'Protector' && myPlayer.lastProtectedId === targetId) {
+                    setActionMessage("Korumacı üst üste iki gece aynı kişiyi koruyamaz!");
+                    setSelectedTarget(null);
+                    return;
+                }
+
+                if (selectedTarget === targetId) {
+                    setSelectedTarget(null);
+                    setActionMessage(null);
+                } else {
+                    setSelectedTarget(targetId);
+                    setActionMessage(`${players[targetId].name} kişisini hedef olarak seçtiniz.`);
+                }
+            };
+
+            const submitNightAction = () => {
+                if (selectedTarget && isAlive && isNight) {
+                    handleNightAction(myRole, selectedTarget);
+                    setActionMessage('Aksiyonunuz gönderildi. Şafak bekleniyor...');
+                    setSelectedTarget(null); 
+                }
+            };
+
+            // Gündüz Oylaması (Normal veya Muhtar Seçimi)
+            const handleDayVoteClick = (targetId) => {
+                if (!isAlive || (!isVoting && !isMuhtarVoting)) return;
+
+                if (gameState.votes && gameState.votes[userId] === targetId) {
+                    handleDayVote(null); // Oyunu geri çek
+                } else {
+                    handleDayVote(targetId); // Oy ver
+                }
+            };
+
+            // --- RENDER BÖLÜMLERİ ---
+
+            // 1. Oyun Sonu Ekranı
+            if (state === 'GAME_OVER') {
+                let winningTeam;
+                let winningColor;
+
+                if (winner === 'VILLAGERS') {
+                    winningTeam = 'KÖYLÜLER';
+                    winningColor = 'text-green-500';
+                } else if (winner === 'VAMPIRES') {
+                    winningTeam = 'VAMPİRLER';
+                    winningColor = 'text-red-500';
+                } else if (winner === 'JESTER') {
+                    winningTeam = 'SOYTARI (TEK BAŞINA)';
+                    winningColor = 'text-yellow-500';
+                }
+
+                return (
+                    <div className={`p-8 rounded-xl ${theme.card} text-center max-w-lg mx-auto mt-10`}>
+                        <h1 className="text-6xl font-extrabold mb-4 text-yellow-400 animate-bounce">Oyun Bitti!</h1>
+                        <h2 className={`4xl font-bold mb-6 ${winningColor}`}>
+                            KAZANAN: {winningTeam}
+                        </h2>
+                        <p className="text-xl text-white mb-8">Hayatta kalanlar: {alivePlayers.map(([, p]) => p.name).join(', ')}</p>
+
+                        <h3 className="text-2xl font-semibold mb-4 text-red-300">Tüm Roller:</h3>
+                        <div className="flex flex-wrap justify-center gap-4">
+                            {Object.values(players).map(p => (
+                                <div key={p.name} className={`p-3 rounded-lg text-sm font-medium ${ROLE_DETAILS[p.role]?.team === 'Villagers' ? theme.villager_color : ROLE_DETAILS[p.role]?.team === 'Vampires' ? theme.vampire_color : theme.neutral_color}`}>
+                                    {p.name} ({ROLE_DETAILS[p.role]?.tr})
+                                </div>
+                            ))}
+                        </div>
+
+                        <button onClick={handleLeaveRoom} className={`${theme.button} mt-8`}>
+                            <Home className="w-5 h-5 mr-2 inline" /> Lobiye Dön
+                        </button>
+                    </div>
+                );
+            }
+
+            // 2. Rol Açma Ekranı (İlk Başlangıç)
+            if (isRoleReveal) {
+                const roleTeam = roleDetails.team;
+                const roleColor = roleTeam === 'Villagers' ? theme.villager_color : roleTeam === 'Vampires' ? theme.vampire_color : theme.neutral_color;
+
+                return (
+                    <div className="flex flex-col items-center justify-center p-8">
+                        <h1 className="text-4xl font-bold mb-8 text-white">Rolünüz Belirleniyor...</h1>
+
+                        {/* Zarf Animasyonu */}
+                        <div className={`${theme.card} p-10 rounded-xl max-w-md w-full text-center overflow-hidden`}>
+                            <div className={`relative w-48 h-32 mx-auto transition-transform duration-1000 ${revealed ? 'transform -translate-y-full opacity-0' : ''}`}>
+                                <div className="absolute inset-0 bg-red-800/80 border-4 border-yellow-400 rounded-lg flex items-center justify-center text-white text-2xl font-serif shadow-2xl animate-pulse">
+                                    GİZEMLİ ZARF
+                                </div>
+                            </div>
+
+                            <div className={`transition-opacity duration-1000 ${revealed ? 'opacity-100 translate-y-0 delay-500' : 'opacity-0 translate-y-full'}`}>
+                                <h2 className="text-2xl text-red-300 mb-4">SİZİN ROLÜNÜZ:</h2>
+                                <div className={`${theme.role_card} ${roleColor} transform scale-105 shadow-2xl`}>
+                                    <Zap className="w-8 h-8 mx-auto mb-3" />
+                                    <p className="text-4xl font-extrabold">{roleDetails.tr}</p>
+                                    <p className="text-base font-light italic">{roleDetails.description}</p>
+                                    <div className="mt-4 pt-4 border-t border-red-900/50">
+                                        <p className="text-sm font-light">Takımınız: {roleTeam === 'Villagers' ? 'Köylüler' : roleTeam === 'Vampires' ? 'Vampirler' : 'Tarafsız'}</p>
+                                        {isVampire && <p className="text-sm font-light text-red-400 mt-1">Diğer Vampirler: {players && Object.values(players).filter(p => p.role === 'Vampire' && p.userId !== userId).map(p => p.name).join(', ') || 'Yok'}</p>}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={() => setRevealed(true)}
+                            className={`${theme.button_danger} mt-8 ${revealed ? 'hidden' : ''}`}
+                        >
+                            Hemen Aç
+                        </button>
+
+                        {revealed && (
+                            <button
+                                onClick={() => handleNextPhase()}
+                                className={`${theme.button} mt-8 animate-fade-in delay-1000`}
+                            >
+                                Oyuna Başla
+                            </button>
+                        )}
+                    </div>
+                );
+            }
+
+            // 3. Oyun İçi Ekranı (Day/Night)
+            return (
+                <div className="grid grid-cols-12 gap-6 min-h-[80vh]">
+                    {/* SOL KISIM: Durum ve Oyuncu Listesi */}
+                    <div className="col-span-12 lg:col-span-8 flex flex-col space-y-6">
+                        <DayNightIndicator dayNumber={dayNumber} isNight={isNight} phase={phase} isGameOver={state === 'GAME_OVER'} />
+
+                        {/* Muhtar Bilgisi */}
+                        <div className={`p-3 rounded-xl ${theme.card} text-center ${muhtar ? 'border-yellow-500 border-2' : 'border-gray-700'}`}>
+                            {muhtar ? (
+                                <p className='text-sm text-white'>Köy Muhtarı: <span className='font-bold text-yellow-400'>{muhtar.name}</span> (Oyu 2x sayılır)</p>
+                            ) : (
+                                <p className='text-sm text-gray-400'>Muhtar henüz seçilmedi veya hayatta değil.</p>
+                            )}
+                        </div>
+
+                        {/* Benim Rol Kartım */}
+                        <div className={`${theme.card} p-4 rounded-xl flex items-center justify-between ${isVampire ? theme.vampire_color : isJester ? theme.neutral_color : theme.villager_color}`}>
+                            <div>
+                                <p className="text-sm text-gray-400">Rolünüz:</p>
+                                <h2 className="text-3xl font-extrabold">{roleDetails.tr}</h2>
+                            </div>
+                            <p className="text-sm font-semibold text-right">Durum: <span className={`${isAlive ? 'text-green-400' : 'text-red-400'}`}>{isAlive ? 'Hayatta' : 'Öldü'}</span></p>
+                        </div>
+
+                        {/* Ana Faz Ekranı */}
+                        <div className={`${theme.card} p-6 flex-1 rounded-xl`}>
+                            <h3 className="text-2xl font-bold mb-4 text-red-300">
+                                {isNight ? 'Gece Aksiyonları' : isMuhtarVoting ? 'Muhtar Seçimi' : isVoting ? 'Suçlama ve Oylama' : 'Gündüz Tartışması'}
+                            </h3>
+                            
+                            {/* Muhtar Seçim Açıklaması */}
+                            {isMuhtarVoting && isAlive && (
+                                <MessageDisplay
+                                    title="Muhtarınızı Seçin"
+                                    message="İlk gün, köyün Muhtarını seçmek için oy kullanın. Muhtarın oyu sonraki linç oylamalarında 2 katı sayılacaktır."
+                                    icon={<Users className="w-8 h-8" />}
+                                />
+                            )}
+
+                            {!isAlive && (
+                                <MessageDisplay
+                                    title="ÖLDÜNÜZ"
+                                    message="Artık oyuna katılamazsınız, ama hayalet sohbetinde konuşabilirsiniz."
+                                    icon={<AlertTriangle className="w-8 h-8" />}
+                                />
+                            )}
+
+                            {/* Gündüz Oylama Sonucu (Bir önceki günden) */}
+                            {votingResults && votingResults.executedName && !isNight && dayNumber > 1 && (
+                                <MessageDisplay
+                                    title="Önceki Gündüzün Hükmü"
+                                    message={`${votingResults.executedName} linç edildi. Rolü: ${ROLE_DETAILS[votingResults.executedRole]?.tr}.`}
+                                    icon={<Zap className="w-8 h-8" />}
+                                />
+                            )}
+                            {/* Gece Aksiyon Sonucu (Yeni Gündüz Başlangıcı) */}
+                            {currentKilled && !isNight && (
+                                <MessageDisplay
+                                    title="Korkunç Gece"
+                                    message={`${currentKilled.name} vahşice katledildi. Kurtarılan oldu mu?: ${currentSaved ? 'Evet (Başarılı Kurtarma)' : 'Hayır'}.`}
+                                    icon={<Moon className="w-8 h-8" />}
+                                />
+                            )}
+                            {/* Gece Aksiyonu Tamamlandı Mesajı */}
+                            {actionMessage && isNight && (
+                                <div className="bg-red-900/40 text-red-300 p-3 rounded-lg text-center mb-4">{actionMessage}</div>
+                            )}
+
+
+                            {/* Canlı Oyuncular ve Aksiyon/Oy Alanı */}
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-6">
+                                {alivePlayers.map(([pId, player]) => {
+                                    const isMyVote = (isVoting || isMuhtarVoting) && gameState.votes && gameState.votes[userId] === pId;
+                                    const isSelectedNightTarget = isNight && selectedTarget === pId;
+
+                                    // Muhtar oylaması veya normal linç oylaması
+                                    const isVoter = isAlive && (isVoting || isMuhtarVoting);
+
+                                    // Gece aksiyonu hedefi
+                                    const isTargetable = (isNight && isAlive && roleDetails.nightAction); 
+                                    
+                                    const playerCardClass = player.isHost ? 'border-yellow-500' : 'border-red-900/50';
+
+                                    let voteCount = 0;
+                                    if (isVoting || isMuhtarVoting) {
+                                        // Oy ağırlığını hesapla (Sadece VOTING fazında 2x Muhtar oyu geçerlidir)
+                                        Object.entries(gameState.votes || {}).forEach(([voterId, targetId]) => {
+                                            if (targetId === pId) {
+                                                const weight = (isVoting && muhtarId === voterId) ? 2 : 1;
+                                                voteCount += weight;
+                                            }
+                                        });
+                                    }
+
+
+                                    return (
+                                        <div key={pId}
+                                            className={`p-4 rounded-xl ${theme.card} transition-all duration-200 cursor-pointer text-center ${playerCardClass} ${isMyVote ? 'bg-red-600/70 border-white' : ''} ${isSelectedNightTarget ? 'bg-red-700/70 border-red-300' : ''} ${muhtarId === pId ? 'ring-4 ring-yellow-500/50' : ''}`}
+                                            onClick={() => {
+                                                if (isNight && isTargetable) handleNightActionClick(pId);
+                                                if (isVoter) handleDayVoteClick(pId);
+                                            }}
+                                        >
+                                            <p className="text-xl font-bold text-white truncate">{player.name}</p>
+                                            <p className="text-sm text-gray-400">{player.isHost ? '(Host)' : ''} {muhtarId === pId ? '(MUHTAR)' : 'Oyuncu'}</p>
+
+                                            {/* Oy Göstergesi */}
+                                            {(isVoting || isMuhtarVoting) && (
+                                                <div className="mt-2 text-sm text-red-300">
+                                                    Oy: {voteCount} {muhtarId === pId && isVoting && isMyVote && '(2x OY)'}
+                                                </div>
+                                            )}
+
+                                            {/* Gece Rol Bilgisi (Sadece Kahin) */}
+                                            {isSeer && !isNight && myPlayer.seerResult && myPlayer.seerResult[pId] && (
+                                                <div className="mt-2 text-sm text-yellow-400">
+                                                    Gece Bildiği Rol: {ROLE_DETAILS[myPlayer.seerResult[pId]]?.tr}
+                                                </div>
+                                            )}
+
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            {/* Gece Aksiyonu Gönderme Butonu */}
+                            {isNight && isAlive && roleDetails.nightAction && (
+                                <div className="mt-6 text-center">
+                                    <button
+                                        onClick={submitNightAction}
+                                        disabled={!selectedTarget || actionMessage?.includes('gönderildi')}
+                                        className={`${theme.button} w-full max-w-sm`}
+                                    >
+                                        Aksiyonu Onayla
+                                    </button>
+                                </div>
+                            )}
+
+
+                            {/* Host Kontrol Butonu */}
+                            {isHost && (
+                                <div className="mt-8 pt-4 border-t border-red-900/50 text-center">
+                                    <p className="text-sm text-red-400 mb-2">Host Kontrolü:</p>
+                                    <button
+                                        onClick={handleNextPhase}
+                                        className={theme.button}
+                                    >
+                                        {isNight ? 'Şafağı Sök' : isMuhtarVoting ? 'Muhtar Seçimini Bitir' : isVoting ? 'Linci Onayla' : 'Tartışmayı Bitir / Oylamaya Geç'}
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* SAĞ KISIM: Chat ve Ölüler Listesi */}
+                    <div className="col-span-12 lg:col-span-4 flex flex-col space-y-6">
+                        <div className="flex-1 min-h-[300px] lg:min-h-[500px]">
+                            <ChatComponent
+                                db={db}
+                                userId={userId}
+                                userName={userName}
+                                gameState={gameState}
+                                playerRole={myRole}
+                                isDead={!isAlive}
+                                isVampire={isVampire}
+                                currentPhase={isNight ? 'NIGHT_ACTIONS' : isMuhtarVoting ? 'MUHTAR_VOTING' : isVoting ? 'VOTING' : 'DISCUSSION'}
+                            />
+                        </div>
+
+                        {/* Oyuncu Listesi (Ölüler dahil) */}
+                        <div className={`${theme.card} p-4 rounded-xl`}>
+                            <h4 className="text-xl font-bold mb-3 text-white border-b border-red-800 pb-2 flex items-center">
+                                <Users className="w-5 h-5 mr-2 text-red-400" />
+                                Tüm Oyuncular
+                            </h4>
+                            <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
+                                {Object.entries(players).sort(([, a], [, b]) => (b.status === 'alive' ? 1 : -1) - (a.status === 'alive' ? 1 : -1)).map(([pId, p]) => (
+                                    <div key={pId} className={`flex justify-between items-center p-2 rounded-lg ${p.status === 'alive' ? 'bg-gray-700/30' : 'bg-gray-900/50 italic opacity-70'}`}>
+                                        <span className={`font-medium ${p.status === 'alive' ? 'text-white' : 'text-gray-500'}`}>
+                                            {p.name} {p.isHost ? '(H)' : ''} {muhtarId === pId ? '(M)' : ''}
+                                        </span>
+                                        <span className={`text-sm ${p.status === 'alive' ? 'text-green-400' : 'text-red-500'}`}>
+                                            {p.status === 'alive' ? 'Hayatta' : 'Öldü'}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+
+        // --- LOBİ EKRANI BİLEŞENİ ---
+
+        const LobbyScreen = ({ db, userId, userName, gameState, handleLeaveRoom, handleStartGame }) => {
+            const { players, hostId, roomId } = gameState;
+            const isHost = userId === hostId;
+            const playerCount = Object.keys(players).length;
+            // Maksimum oyuncu sayısını 10 yapıyoruz.
+            const isReadyToStart = playerCount >= 6 && playerCount <= 10; 
+            const isTooManyPlayers = playerCount > 10;
+
+            return (
+                <div className={`p-8 rounded-xl ${theme.card} text-center max-w-xl mx-auto mt-10`}>
+                    <h1 className="text-4xl font-extrabold mb-4 text-white">Oyun Lobisi: {roomId}</h1>
+                    <p className="text-lg mb-6 text-red-300">Oda Kodu: <span className="text-white font-mono bg-gray-700 p-1 rounded">{roomId}</span></p>
+
+                    <div className="mb-8 p-4 rounded-lg bg-gray-700/50">
+                        <h3 className="text-2xl font-semibold mb-3 text-white">Oyuncular ({playerCount})</h3>
+                        <div className="space-y-2">
+                            {Object.values(players).map(player => (
+                                <div key={player.userId} className={`p-2 rounded-lg flex justify-between items-center ${player.isHost ? 'bg-red-800/50' : 'bg-gray-600/50'}`}>
+                                    <span className="text-white font-medium">{player.name}</span>
+                                    <span className="text-sm text-gray-300">{player.isHost ? '(Oda Sahibi)' : 'Oyuncu'}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {isHost ? (
+                        <div className="space-y-4">
+                            <p className={`text-sm font-semibold ${isReadyToStart ? 'text-green-400' : 'text-yellow-400'}`}>
+                                {isReadyToStart ? `Başlamak için yeterli oyuncu (${playerCount}) var.` : `Oyun için minimum 6, maksimum 10 oyuncu gerekir. (Mevcut: ${playerCount})`}
+                            </p>
+                            <button
+                                onClick={handleStartGame}
+                                disabled={!isReadyToStart || isTooManyPlayers}
+                                className={`${theme.button} w-full ${!isReadyToStart || isTooManyPlayers ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            >
+                                Oyunu Başlat
+                            </button>
+                        </div>
+                    ) : (
+                        <p className="text-red-300 text-lg">Oda sahibi ({players[hostId]?.name || 'Bilinmiyor'}) oyunun başlamasını bekliyor...</p>
+                    )}
+
+                    <button onClick={handleLeaveRoom} className={`${theme.button_danger} mt-6 w-full`}>
+                        <LogOut className="w-4 h-4 mr-2 inline" /> Odadan Çık
+                    </button>
+                </div>
+            );
+        };
+
+        // --- MENÜ EKRANI BİLEŞENİ ---
+
+        const MenuScreen = ({ userName, setUserName, handleCreateRoom, handleJoinRoom, loading }) => {
+            const [roomCode, setRoomCode] = useState('');
+
+            return (
+                <div className={`p-8 rounded-xl ${theme.card} text-center max-w-md mx-auto mt-10`}>
+                    <h1 className="text-5xl font-extrabold mb-8 text-white">Köyün Laneti</h1>
+
+                    <input
+                        type="text"
+                        value={userName}
+                        onChange={(e) => setUserName(e.target.value.substring(0, 15))}
+                        placeholder="Kullanıcı Adınız (Max 15 Karakter)"
+                        className={`${theme.input} w-full mb-6`}
+                        disabled={loading}
+                    />
+
+                    {userName.trim() ? (
+                        <>
+                            <button
+                                onClick={handleCreateRoom}
+                                className={`${theme.button} w-full mb-4`}
+                                disabled={loading}
+                            >
+                                {loading ? 'Oluşturuluyor...' : 'Yeni Oda Oluştur'}
+                            </button>
+
+                            <div className="my-6 border-t border-red-900/50 pt-6">
+                                <input
+                                    type="text"
+                                    value={roomCode}
+                                    onChange={(e) => setRoomCode(e.target.value.toUpperCase().substring(0, 4))}
+                                    placeholder="Oda Kodunu Girin (4 Karakter)"
+                                    className={`${theme.input} w-full mb-4 text-center`}
+                                    disabled={loading}
+                                />
+                                <button
+                                    onClick={() => handleJoinRoom(roomCode)}
+                                    disabled={roomCode.length !== 4 || loading}
+                                    className={`${theme.button_danger} w-full ${roomCode.length !== 4 ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                >
+                                    Odaya Katıl
+                                </button>
+                            </div>
+                        </>
+                    ) : (
+                        <p className="text-red-400 mt-4">Devam etmek için bir kullanıcı adı girin.</p>
+                    )}
+                </div>
+            );
+        };
+
+
+        // --- ANA UYGULAMA BİLEŞENİ ---
+
+        const App = () => {
+            const [userId, setUserId] = useState(null);
+            const [userName, setUserName] = useState('');
+            const [roomId, setRoomId] = useState(null);
+            const [gameState, setGameState] = useState(null);
+            const [loading, setLoading] = useState(true);
+            const [error, setError] = useState(null);
+
+            // --- FIREBASE AUTH VE İLK BAŞLATMA ---
+            useEffect(() => {
+                if (!authInitialized) {
+                    initializeFirebase(setUserId, setLoading, setError);
+                }
+            }, []);
+
+            // --- ODA DURUMUNU DİNLEME (onSnapshot) ---
+            useEffect(() => {
+                if (!db || !roomId || !userId) return;
+
+                const roomRef = getRoomDocRef(roomId);
+                if (!roomRef) return; // DB başlatılmadıysa ref null dönebilir
+
+                const unsubscribe = window.onSnapshot(roomRef, (docSnap) => {
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
+                        
+                        // Oyuncu listede yoksa lobiye dön (Hata Düzeltmesi)
+                        if (!data.players[userId]) {
+                             console.log("Oyuncu artık bu odanın oyuncu listesinde değil. Lobiye dönülüyor.");
+                             setRoomId(null);
+                             setGameState(null);
+                             return;
+                        }
+                        setGameState({ ...data, roomId });
+                        setError(null);
+                    } else {
+                        // Oda silinmişse veya bulunamazsa
+                        setRoomId(null);
+                        setGameState(null);
+                        setError("Oda bulunamadı veya silindi.");
+                    }
+                }, (err) => {
+                    console.error("Firestore dinleme hatası:", err);
+                    setError("Veri güncellenirken bir hata oluştu.");
+                });
+
+                return () => unsubscribe();
+            }, [roomId, userId, db]);
+
+
+            // --- ODA YÖNETİM FONKSİYONLARI ---
+
+            const handleCreateRoom = async () => {
+                // Ayrıntılı Hata Kontrolü
+                if (!userName.trim()) {
+                    setError("Hata: Kullanıcı adı boş olamaz.");
+                    return;
+                }
+                if (!userId) {
+                    setError("Hata: Oturum açılamadı. Lütfen sayfayı yenileyin (Auth/Kimlik doğrulama başarısız).");
+                    return;
+                }
+                if (!db) {
+                     setError("Hata: Veritabanı bağlantısı kurulamadı. Gerçek zamanlı oyun için geçerli bir Firebase yapılandırması gereklidir.");
+                     return;
+                }
+                
+                setLoading(true);
+
+                try {
+                    let newRoomId;
+                    let docSnap;
+
+                    // Tekrar eden kodları önlemek için kontrol et
+                    do {
+                        newRoomId = generateRoomCode();
+                        const ref = getRoomDocRef(newRoomId);
+                        if (!ref) throw new Error("Firebase Document Reference Error");
+                        docSnap = await window.getDoc(ref);
+                    } while (docSnap.exists());
+
+                    const initialPlayer = { userId, name: userName, role: null, status: 'alive', isHost: true, lastProtectedId: null, seerResult: {} }; 
+
+                    const newGameState = {
+                        code: newRoomId,
+                        hostId: userId,
+                        players: { [userId]: initialPlayer },
+                        state: 'LOBBY',
+                        dayNumber: 0,
+                        phase: 'WAITING',
+                        vampireChat: [],
+                        generalChat: [],
+                        ghostChat: [],
+                        votes: {},
+                        nightVotes: {},
+                        votingResults: null,
+                        currentKilled: null,
+                        currentSaved: null,
+                        winner: null,
+                        muhtarId: null,
+                    };
+                    
+                    const ref = getRoomDocRef(newRoomId);
+                    if (!ref) throw new Error("Firebase Document Reference Error");
+
+                    await window.setDoc(ref, newGameState);
+                    setRoomId(newRoomId);
+                    setError(null);
+
+                } catch (e) {
+                    console.error("Oda oluşturma hatası:", e);
+                    setError("Oda oluşturulamadı. (Ayrıntılar için konsolu kontrol edin).");
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const handleJoinRoom = async (code) => {
+                // Ayrıntılı Hata Kontrolü
+                if (!userName.trim()) {
+                    setError("Hata: Kullanıcı adı boş olamaz.");
+                    return;
+                }
+                if (!userId) {
+                    setError("Hata: Oturum açılamadı. Lütfen sayfayı yenileyin (Auth/Kimlik doğrulama başarısız).");
+                    return;
+                }
+                if (!db) {
+                     setError("Hata: Veritabanı bağlantısı kurulamadı. Gerçek zamanlı oyun için geçerli bir Firebase yapılandırması gereklidir.");
+                     return;
+                }
+                if (code.length !== 4) {
+                     setError("Hata: Oda kodu 4 karakter olmalıdır.");
+                     return;
+                }
+
+                setLoading(true);
+
+                try {
+                    const roomRef = getRoomDocRef(code);
+                    if (!roomRef) throw new Error("Firebase Document Reference Error");
+
+                    const docSnap = await window.getDoc(roomRef);
+                    
+                    if (!docSnap.exists() || docSnap.data().state !== 'LOBBY') {
+                         setError("Geçersiz Oda Kodu veya Oyun Zaten Başlamış.");
+                         setLoading(false);
+                         return;
+                    }
+                    
+                    const roomData = docSnap.data();
+
+                    if (Object.keys(roomData.players).length >= 10) {
+                         setError("Oda doldu (Max 10 Oyuncu).");
+                         setLoading(false);
+                         return;
+                    }
+
+                    const newPlayer = { userId, name: userName, role: null, status: 'alive', isHost: false, lastProtectedId: null, seerResult: {} }; 
+
+                    // Zaten odadaysa
+                    if (roomData.players[userId]) {
+                        setRoomId(code);
+                        setLoading(false);
+                        return;
+                    }
+
+                    // Firestore'a oyuncuyu ekle ve genel sohbete katılım mesajı ekle
+                    const updatedGeneralChat = [
+                        ...(roomData.generalChat || []), 
+                        { 
+                            id: Date.now().toString(), 
+                            senderName: 'Sistem', 
+                            text: `${userName} lobiye katıldı.`, 
+                            timestamp: new Date().toISOString() 
+                        }
+                    ];
+                    
+                    await window.updateDoc(roomRef, {
+                        [`players.${userId}`]: newPlayer,
+                        generalChat: updatedGeneralChat,
+                    });
+
+                    // Başarılı katılım (Hata Düzeltmesi: setRoomId'nin updateDoc sonrası çalışmasını sağla)
+                    setRoomId(code);
+                    setError(null);
+                } catch (e) {
+                    console.error("Odaya katılma hatası:", e);
+                    setError("Odaya katılınamadı. (Ayrıntılar için konsolu kontrol edin).");
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const handleLeaveRoom = async () => {
+                if (!roomId || !userId || !db) return;
+                setLoading(true);
+
+                try {
+                    const roomRef = getRoomDocRef(roomId);
+                    if (!roomRef) throw new Error("Firebase Document Reference Error");
+
+                    const docSnap = await window.getDoc(roomRef);
+
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
+                        
+                        if (!data.players[userId]) {
+                             // Oyuncu zaten ayrılmış
+                             setRoomId(null); setGameState(null); setLoading(false); return;
+                        }
+
+                        const departingPlayerName = data.players[userId].name;
+                        const updatedPlayers = { ...data.players };
+                        delete updatedPlayers[userId];
+
+                        if (Object.keys(updatedPlayers).length === 0) {
+                            // Odada kimse kalmadıysa odayı sil
+                            await window.deleteDoc(roomRef);
+                        } else {
+                            let newHostId = data.hostId;
+                            
+                            // Host ayrılıyorsa yeni bir host ata
+                            if (data.hostId === userId) {
+                                newHostId = Object.keys(updatedPlayers)[0];
+                                updatedPlayers[newHostId] = { ...updatedPlayers[newHostId], isHost: true };
+                            }
+                            
+                            const updatedGeneralChat = [
+                                ...(data.generalChat || []), 
+                                { 
+                                    id: Date.now().toString(), 
+                                    senderName: 'Sistem', 
+                                    text: `${departingPlayerName} odadan ayrıldı.`, 
+                                    timestamp: new Date().toISOString() 
+                                }
+                            ];
+
+                            await window.updateDoc(roomRef, {
+                                players: updatedPlayers,
+                                hostId: newHostId,
+                                generalChat: updatedGeneralChat,
+                            });
+                        }
+                    }
+
+                } catch (e) {
+                    console.error("Odadan ayrılma hatası:", e);
+                } finally {
+                    setRoomId(null);
+                    setGameState(null);
+                    setLoading(false);
+                }
+            };
+
+            // --- OYUN BAŞLATMA VE ROL DAĞITIMI ---
+
+            const handleStartGame = async () => {
+                if (!gameState || !userId || gameState.hostId !== userId || gameState.state !== 'LOBBY' || !db) return;
+
+                const playerCount = Object.keys(gameState.players).length;
+                if (playerCount < 6 || playerCount > 10) {
+                    setError("Oyun için minimum 6, maksimum 10 oyuncu gereklidir.");
+                    return;
+                }
+
+                const rolesToDistribute = getRoleDistribution(playerCount);
+                const shuffledRoles = rolesToDistribute.sort(() => 0.5 - Math.random());
+
+                const newPlayers = { ...gameState.players };
+                let roleIndex = 0;
+
+                Object.keys(newPlayers).forEach(pId => {
+                    newPlayers[pId] = { 
+                        ...newPlayers[pId], 
+                        role: shuffledRoles[roleIndex], 
+                        status: 'alive', 
+                        lastProtectedId: null,
+                        seerResult: {} 
+                    };
+                    roleIndex++;
+                });
+                
+                const roomRef = getRoomDocRef(roomId);
+                if (!roomRef) return;
+
+                try {
+                    await window.updateDoc(roomRef, {
+                        players: newPlayers,
+                        state: 'ROLE_REVEAL', 
+                        dayNumber: 0,
+                        phase: 'REVEAL',
+                        generalChat: [{ id: Date.now().toString(), senderName: 'Sistem', text: 'Oyun başladı! Rollerinizi kontrol edin.', timestamp: new Date().toISOString() }],
+                        vampireChat: [],
+                        votes: {},
+                        nightVotes: {},
+                        votingResults: null,
+                        currentKilled: null,
+                        currentSaved: null,
+                        winner: null,
+                        muhtarId: null, 
+                    });
+                } catch (e) {
+                    console.error("Oyunu başlatma hatası:", e);
+                    setError("Oyunu başlatırken hata oluştu.");
+                }
+            };
+            
+            // --- YARDIMCI FONKSİYON: Muhtar Seçimini İşleme ---
+            const processMuhtarVotes = (currentPlayers, currentVotes) => {
+                const voteCounts = {};
+                Object.values(currentVotes).forEach(targetId => {
+                    voteCounts[targetId] = (voteCounts[targetId] || 0) + 1;
+                });
+                
+                let maxVotes = 0;
+                let tiedCandidates = [];
+
+                Object.entries(voteCounts).forEach(([targetId, count]) => {
+                    if (count > maxVotes) {
+                        maxVotes = count;
+                        tiedCandidates = [targetId];
+                    } else if (count === maxVotes) {
+                        tiedCandidates.push(targetId);
+                    }
+                });
+
+                if (tiedCandidates.length === 1) {
+                    const electedMuhtarId = tiedCandidates[0];
+                    return {
+                        electedMuhtarId: electedMuhtarId,
+                        message: `${currentPlayers[electedMuhtarId].name} oyuncusu Köy Muhtarı olarak seçildi!`
+                    };
+                }
+
+                return { electedMuhtarId: null, message: "Muhtar seçimi yapılamadı, eşitlik bozuldu veya oy kullanılmadı. Oyun tartışma fazına geçiyor." };
+            };
+
+
+            // --- OYUN İLERLEME (PHASE TRANSITION) ---
+
+            const checkWinCondition = (currentPlayers) => {
+                const alivePlayers = Object.values(currentPlayers).filter(p => p.status === 'alive');
+                const aliveVampires = alivePlayers.filter(p => p.role === 'Vampire').length;
+                const aliveVillagersTeam = alivePlayers.filter(p => ROLE_DETAILS[p.role]?.team === 'Villagers').length; 
+
+                if (aliveVampires >= aliveVillagersTeam) {
+                    return 'VAMPIRES';
+                }
+                if (aliveVampires === 0) {
+                    return 'VILLAGERS';
+                }
+                return null;
+            };
+
+
+            const handleNextPhase = async () => {
+                if (!gameState || !userId || gameState.hostId !== userId || gameState.state === 'GAME_OVER' || !db) return;
+
+                let newState = { ...gameState };
+                let nextState;
+                let nextPhase;
+
+                const winner = checkWinCondition(newState.players);
+                if (winner) {
+                    await window.updateDoc(getRoomDocRef(roomId), { state: 'GAME_OVER', winner });
+                    return;
+                }
+
+                const roomRef = getRoomDocRef(roomId);
+                if (!roomRef) return;
+
+                // 2. Faz Geçiş Mantığı
+                if (newState.state === 'ROLE_REVEAL' || newState.phase === 'REVEAL') {
+                    nextState = 'DAY';
+                    nextPhase = 'MUHTAR_VOTING';
+                    newState.dayNumber = 1;
+                    newState.currentKilled = null;
+                    newState.currentSaved = null;
+                } else if (newState.phase === 'MUHTAR_VOTING') {
+                    const muhtarResult = processMuhtarVotes(newState.players, newState.votes);
+                    
+                    if (muhtarResult.electedMuhtarId && newState.players[muhtarResult.electedMuhtarId].status === 'alive') {
+                        newState.muhtarId = muhtarResult.electedMuhtarId;
+                    } else {
+                         newState.muhtarId = null;
+                    }
+                    
+                    newState.generalChat.push({ id: Date.now().toString(), senderName: 'Sistem', text: muhtarResult.message, timestamp: new Date().toISOString() });
+                    newState.votes = {};
+
+                    nextState = 'DAY';
+                    nextPhase = 'DISCUSSION';
+
+                } else if (newState.phase === 'DISCUSSION') {
+                    nextState = 'DAY';
+                    nextPhase = 'VOTING';
+                } else if (newState.phase === 'VOTING') {
+                    // Gündüz Oylama Sonucu İşle 
+                    const { executedName, executedRole, executedUserId, jesterWin } = processDayVotes(newState.players, newState.votes, newState.muhtarId);
+
+                    newState.votingResults = { executedName, executedRole };
+
+                    // Jester Kazanma Kontrolü
+                    if (jesterWin) {
+                        await window.updateDoc(roomRef, { state: 'GAME_OVER', winner: 'JESTER' });
+                        return;
+                    }
+                    
+                    if (executedUserId) {
+                        newState.players[executedUserId].status = 'dead';
+                        newState.generalChat.push({ id: Date.now().toString(), senderName: 'Sistem', text: `${executedName} linç edildi. Rolü: ${ROLE_DETAILS[executedRole]?.tr} idi.`, timestamp: new Date().toISOString() });
+                    
+                        // Muhtar öldüyse muhtarId'yi sıfırla
+                        if (executedUserId === newState.muhtarId) {
+                            newState.muhtarId = null;
+                            newState.generalChat.push({ id: Date.now().toString(), senderName: 'Sistem', text: 'Muhtar linç edildi! Köyün oyu artık 1x olarak sayılacak.', timestamp: new Date().toISOString() });
+                        }
+
+                    } else {
+                         newState.generalChat.push({ id: Date.now().toString(), senderName: 'Sistem', text: 'Kimse çoğunluk oyu alamadı, linç gerçekleşmedi.', timestamp: new Date().toISOString() });
+                    }
+
+                    // Yeniden Kazanma Kontrolü (Diğer roller için)
+                    const afterDayWinner = checkWinCondition(newState.players);
+                    if (afterDayWinner) {
+                        await window.updateDoc(roomRef, { state: 'GAME_OVER', winner: afterDayWinner });
+                        return;
+                    }
+
+                    nextState = 'NIGHT_ACTIONS';
+                    nextPhase = 'NIGHT_ACTIONS';
+                    newState.votes = {}; 
+
+                } else if (newState.phase === 'NIGHT_ACTIONS') {
+                    // Gece Aksiyonlarını İşle
+                    const nightResults = processNightActions(newState.players, newState.nightVotes);
+
+                    newState.currentKilled = nightResults.killed;
+                    newState.currentSaved = nightResults.saved;
+
+                    // Protector's action logic: Update the last protected ID
+                    Object.keys(newState.players).forEach(pId => {
+                        if (newState.players[pId].role === 'Protector') {
+                            newState.players[pId].lastProtectedId = nightResults.protectorTargetId;
+                        }
+                    });
+
+
+                    if (nightResults.killed) { 
+                        newState.players[nightResults.killed.userId].status = 'dead';
+                        
+                        if (nightResults.killed.userId === newState.muhtarId) {
+                            newState.muhtarId = null;
+                            newState.generalChat.push({ id: Date.now().toString(), senderName: 'Sistem', text: 'Muhtar gece saldırısında öldü!', timestamp: new Date().toISOString() });
+                        }
+                        
+                        // Kahin sonucunu güncelle
+                        if(nightResults.seerResult) {
+                            Object.keys(newState.players).forEach(pId => {
+                                 if (newState.players[pId].role === 'Seer' && newState.players[pId].status === 'alive') {
+                                      newState.players[pId].seerResult = { ...newState.players[pId].seerResult, ...nightResults.seerResult };
+                                 }
+                            });
+                        }
+                    } else if (nightResults.saved) {
+                         // Kahin sonucunu güncelle
+                         if(nightResults.seerResult) {
+                             Object.keys(newState.players).forEach(pId => {
+                                  if (newState.players[pId].role === 'Seer' && newState.players[pId].status === 'alive') {
+                                      newState.players[pId].seerResult = { ...newState.players[pId].seerResult, ...nightResults.seerResult };
+                                  }
+                             });
+                         }
+                    }
+                    
+                    newState.nightVotes = {};
+                    newState.dayNumber += 1;
+                    nextState = 'DAY';
+                    nextPhase = 'DISCUSSION';
+                    newState.generalChat.push({ id: Date.now().toString(), senderName: 'Sistem', text: 'Güneş doğdu! Yeni güne başlıyoruz.', timestamp: new Date().toISOString() });
+
+
+                    // Yeniden Kazanma Kontrolü
+                    const afterNightWinner = checkWinCondition(newState.players);
+                    if (afterNightWinner) {
+                        await window.updateDoc(roomRef, { state: 'GAME_OVER', winner: afterNightWinner });
+                        return;
+                    }
+                }
+
+
+                // 3. Veritabanına Kaydet
+                try {
+                    await window.updateDoc(roomRef, {
+                        state: nextState,
+                        phase: nextPhase,
+                        dayNumber: newState.dayNumber,
+                        players: newState.players,
+                        votes: newState.votes,
+                        nightVotes: newState.nightVotes,
+                        currentKilled: newState.currentKilled,
+                        currentSaved: newState.currentSaved,
+                        votingResults: newState.votingResults,
+                        generalChat: newState.generalChat,
+                        muhtarId: newState.muhtarId,
+                    });
+                } catch (e) {
+                    console.error("Faz geçişi hatası:", e);
+                    setError("Oyun fazı ilerletilemedi.");
+                }
+            };
+
+            // Gündüz Oylamasını İşleme (Linç)
+            const processDayVotes = (currentPlayers, currentVotes, muhtarId) => {
+                const voteCounts = {};
+                
+                Object.keys(currentVotes).forEach(voterId => {
+                    const targetId = currentVotes[voterId]; 
+                    if (currentPlayers[voterId]?.status !== 'alive') return; 
+
+                    let voteWeight = 1;
+                    
+                    if (voterId === muhtarId) {
+                        voteWeight = 2; 
+                    }
+                    
+                    voteCounts[targetId] = (voteCounts[targetId] || 0) + voteWeight;
+                });
+
+                const aliveCount = Object.values(currentPlayers).filter(p => p.status === 'alive').length;
+                const majorityThreshold = Math.floor(aliveCount / 2) + 1; 
+
+                let maxVotes = 0;
+                let tiedCandidates = [];
+
+                Object.entries(voteCounts).forEach(([targetId, count]) => {
+                    if (count > maxVotes) {
+                        maxVotes = count;
+                        tiedCandidates = [targetId];
+                    } else if (count === maxVotes) {
+                        tiedCandidates.push(targetId);
+                    }
+                });
+
+                if (maxVotes >= majorityThreshold && tiedCandidates.length === 1) {
+                    const executedUserId = tiedCandidates[0];
+                    const executedRole = currentPlayers[executedUserId].role;
+                    
+                    if (executedRole === 'Jester') {
+                         return {
+                            executedUserId: executedUserId,
+                            executedName: currentPlayers[executedUserId].name,
+                            executedRole: executedRole,
+                            jesterWin: true 
+                         };
+                    }
+
+                    return {
+                        executedUserId: executedUserId,
+                        executedName: currentPlayers[executedUserId].name,
+                        executedRole: executedRole,
+                        jesterWin: false
+                    };
+                }
+
+                return { executedUserId: null, executedName: null, executedRole: null, jesterWin: false };
+            };
+
+            // Gece Aksiyonlarını İşleme
+            const processNightActions = (currentPlayers, nightVotes) => {
+                const actionTargets = {}; 
+
+                Object.entries(nightVotes).forEach(([role, targetId]) => {
+                    const playerByRole = Object.values(currentPlayers).find(p => p.role === role && p.status === 'alive');
+                    if (!playerByRole) return;
+                    
+                    if (!actionTargets[role] || role === 'Vampire') {
+                        actionTargets[role] = targetId;
+                    } 
+                });
+                
+                const vampireTargetId = actionTargets['Vampire'];
+                const doctorTargetId = actionTargets['Doctor'];
+                const seerTargetId = actionTargets['Seer'];
+                const protectorTargetId = actionTargets['Protector']; 
+                
+                let killed = null;
+                let savedPlayer = null;
+                let seerResult = null;
+
+
+                // 1. Kahin Aksiyonu
+                if (seerTargetId && currentPlayers[seerTargetId]?.status === 'alive') {
+                    seerResult = { [seerTargetId]: currentPlayers[seerTargetId].role };
+                }
+
+                // 2. Vampir Aksiyonu (Hedef Belirlenir)
+                if (vampireTargetId && currentPlayers[vampireTargetId]?.status === 'alive') {
+                    const targetPlayer = currentPlayers[vampireTargetId];
+                    killed = { userId: vampireTargetId, name: targetPlayer.name, role: targetPlayer.role };
+                }
+                
+                // 3. Kurtarma Kontrolü (Doktor veya Korumacı)
+                if (killed) {
+                    let isProtected = false;
+                    
+                    if (doctorTargetId === killed.userId) {
+                        isProtected = true;
+                    }
+                    if (protectorTargetId === killed.userId) {
+                        isProtected = true;
+                    }
+
+                    if (isProtected) {
+                        savedPlayer = { userId: killed.userId, name: killed.name, role: killed.role };
+                        killed = null;
+                    }
+                }
+                
+                return { 
+                    killed, 
+                    saved: savedPlayer, 
+                    seerResult, 
+                    protectorTargetId: protectorTargetId || null 
+                };
+            };
+
+
+            // --- KULLANICI OY VERME / AKSİYON GÖNDERME ---
+
+            const handleDayVote = async (targetId) => {
+                if (!gameState || (gameState.phase !== 'VOTING' && gameState.phase !== 'MUHTAR_VOTING') || !userId || gameState.players[userId]?.status !== 'alive' || !db) return;
+                
+                const newVotes = { ...gameState.votes };
+                const roomRef = getRoomDocRef(roomId);
+                if (!roomRef) return;
+
+                if (targetId === null) {
+                    // Oy geri çekme
+                    delete newVotes[userId];
+                } else {
+                    // Oy verme (sadece hayatta olanlara oy verilebilir)
+                    if (gameState.players[targetId]?.status === 'alive') {
+                        newVotes[userId] = targetId;
+                    } else {
+                        console.error("Ölmüş bir oyuncuya oy verilemez.");
+                        return;
+                    }
+                }
+
+                try {
+                    await window.updateDoc(roomRef, { votes: newVotes });
+                } catch (e) {
+                    console.error("Oy verme hatası:", e);
+                }
+            };
+            
+            const handleNightAction = async (role, targetId) => {
+                 if (!gameState || gameState.phase !== 'NIGHT_ACTIONS' || !userId || gameState.players[userId]?.status !== 'alive' || !db) return;
+                 if (!ROLE_DETAILS[role]?.nightAction) return;
+                 
+                 // Aksiyon hedefi hayatta olmalı
+                 if (gameState.players[targetId]?.status !== 'alive') {
+                     console.error("Ölmüş bir oyuncuyu hedefleyemezsiniz.");
+                     return;
+                 }
+
+                 const roomRef = getRoomDocRef(roomId);
+                 if (!roomRef) return;
+                 
+                 const nightVotes = { ...gameState.nightVotes, [role]: targetId };
+
+                 try {
+                     await window.updateDoc(roomRef, { nightVotes });
+                 } catch (e) {
+                     console.error("Gece aksiyonu hatası:", e);
+                 }
+            };
+
+
+            // --- RENDER BÖLÜMÜ ---
+
+            if (loading) {
+                return (
+                    <div className={`flex items-center justify-center min-h-screen ${theme.bg} ${theme.text_light}`}>
+                        <div className="text-3xl font-extrabold animate-pulse">Köyün Laneti Yükleniyor...</div>
+                    </div>
+                );
+            }
+
+            if (error) {
+                // Hata mesajını göster
+                return (
+                    <div className={`p-8 rounded-xl ${theme.card} text-center max-w-lg mx-auto mt-10`}>
+                        <h1 className="text-4xl font-extrabold mb-4 text-red-500">Hata!</h1>
+                        <p className="text-lg text-gray-300 mb-6">{error}</p>
+                        <button onClick={() => window.location.reload()} className={theme.button}>Tekrar Dene</button>
+                    </div>
+                );
+            }
+            
+            // Oda içindeyse (Lobi veya Oyun)
+            if (roomId && gameState) {
+                if (gameState.state === 'LOBBY') {
+                    return (
+                        <div className={`min-h-screen p-6 md:p-10 ${theme.bg} font-sans`}>
+                            <LobbyScreen
+                                db={db}
+                                userId={userId}
+                                userName={userName}
+                                gameState={gameState}
+                                handleLeaveRoom={handleLeaveRoom}
+                                handleStartGame={handleStartGame}
+                            />
+                        </div>
+                    );
+                }
+
+                // Oyun başladıysa
+                return (
+                    <div className={`min-h-screen p-4 md:p-8 ${theme.bg} font-sans`}>
+                        <GameScreen
+                            db={db}
+                            userId={userId}
+                            userName={userName}
+                            gameState={gameState}
+                            handleLeaveRoom={handleLeaveRoom}
+                            handleNextPhase={handleNextPhase}
+                            handleDayVote={handleDayVote}
+                            handleNightAction={handleNightAction}
+                        />
+                    </div>
+                );
+            }
+
+            // Menü Ekranı (Oda Seçimi)
+            return (
+                <div className={`min-h-screen p-6 md:p-10 ${theme.bg} font-sans`}>
+                    <MenuScreen
+                        userName={userName}
+                        setUserName={setUserName}
+                        handleCreateRoom={handleCreateRoom}
+                        handleJoinRoom={handleJoinRoom}
+                        loading={loading}
+                    />
+                </div>
+            );
+        };
+
+        // --- DOM'a Yerleştirme ---
+        // Uygulamanın çalışması için bu satır gereklidir
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+</body>
+</html>
