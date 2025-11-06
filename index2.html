@@ -105,9 +105,14 @@
                 // Varsayılan, boş config ile başlat
                 // Gerçek bir Firebase projesi kullanmıyorsanız, bu config'i kendi projenizle değiştirmeniz gerekir.
                 const config = JSON.parse(__firebase_config) || {
-                    apiKey: "AIzaSyCtxhaGd7CgBvfQMLNOYkfjGdouMYH9fIE", 
-                    authDomain: "oyun-e145e.firebaseapp.com", 
-                    projectId: "oyun-e145e"
+                    apiKey: "AIzaSyCtxhaGd7CgBvfQMLNOYkfjGdouMYH9fIE",
+  authDomain: "oyun-e145e.firebaseapp.com",
+  databaseURL: "https://oyun-e145e-default-rtdb.firebaseio.com",
+  projectId: "oyun-e145e",
+  storageBucket: "oyun-e145e.firebasestorage.app",
+  messagingSenderId: "600558322843",
+  appId: "1:600558322843:web:ea7c2bf5d5fb81f95d323e",
+  measurementId: "G-DT3DNXVRFN"
                 };
 
                 app = window.initializeApp(config);
