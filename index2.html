@@ -52,40 +52,90 @@
 <body>
     <div id="root"></div>
 
-    <!-- Firebase Kütüphaneleri (SADECE MOCK İÇİN İHTİYAÇ DUYULAN GLOBALLER) -->
+    <!-- Firebase Kütüphaneleri -->
     <script type="module">
-        // Firebase Modülleri artık kullanılmayacak, ancak global isimler korunuyor
-        window.doc = () => ({});
-        window.setDoc = async () => {};
-        window.getDoc = async () => ({ exists: () => false, data: () => ({}) });
-        window.updateDoc = async () => {};
-        window.onSnapshot = () => () => {};
-        window.deleteDoc = async () => {};
+        // Firebase Modüllerini yükle
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, updateDoc, onSnapshot, collection, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+        // Global değişkenlere ata (JSX kodunun erişebilmesi için)
+        window.initializeApp = initializeApp;
+        window.getAuth = getAuth;
+        window.signInAnonymously = signInAnonymously;
+        window.signInWithCustomToken = signInWithCustomToken;
+        window.getFirestore = getFirestore;
+        window.doc = doc;
+        window.setDoc = setDoc;
+        window.getDoc = getDoc;
+        window.updateDoc = updateDoc;
+        window.onSnapshot = onSnapshot;
+        window.collection = collection;
+        window.deleteDoc = deleteDoc;
     </script>
 
     <!-- React/JSX Kodumuz -->
     <script type="text/babel">
         // Lucide Icons'ı JSX içinde kullanabilmek için global nesneden çekiyoruz
         const { AlertTriangle, Home, LogOut, MessageSquare, Moon, Sun, Users, Zap } = window.lucide;
-        const { useState, useEffect, useMemo, useRef } = React;
+        const { useState, useEffect, useCallback, useMemo, useRef } = React;
 
-        // --- MOCK DATABASE SETUP (Yerel Test için) ---
-        // Bu veritabanı, sayfayı yenilediğinizde veya tarayıcıyı kapattığınızda silinecektir.
-        const MOCK_DATABASE = {};
+        // --- Sabitler ve Dışsal Değişkenler (Canvas Ortamını Taklit Etme) ---
         
-        // --- Sabitler ve Dışsal Değişkenler (Mocking) ---
         const __app_id = 'local-vampir-koylu-app'; 
-        const db = null; // db null olarak kalacak
-        let authInitialized = true; // Auth her zaman başarılı sayılacak
+        const __firebase_config = '{}'; 
+        const __initial_auth_token = undefined; 
 
-        // --- Firebase'i Başlatma ve Auth Kontrolü (Mock) ---
-        const initializeFirebase = async (setUserId, setLoading) => {
-             // Mock modunda userId'yi hemen atarız
-             const currentUserId = localStorage.getItem('mockUserId') || crypto.randomUUID();
-             localStorage.setItem('mockUserId', currentUserId);
-             setUserId(currentUserId);
-             setLoading(false);
+        // Firebase referansları (manuel başlatılacak)
+        let app;
+        let db;
+        let auth;
+        let authInitialized = false;
+
+        // --- Firebase'i Başlatma ve Auth Kontrolü ---
+        const initializeFirebase = async (setUserId, setLoading, setError) => {
+            if (authInitialized) return;
+
+            try {
+                if (typeof window.initializeApp === 'undefined') {
+                    // Bu senaryo, Firebase kütüphaneleri yüklenemediğinde gerçekleşir (genellikle internet veya CDN hatası)
+                    throw new Error("Firebase kütüphaneleri yüklenemedi.");
+                }
+
+                // Varsayılan, boş config ile başlat
+                // Gerçek bir Firebase projesi kullanmıyorsanız, bu config'i kendi projenizle değiştirmeniz gerekir.
+                const config = JSON.parse(__firebase_config) || {
+                    apiKey: "AIzaSyCtxhaGd7CgBvfQMLNOYkfjGdouMYH9fIE", 
+                    authDomain: "oyun-e145e.firebaseapp.com", 
+                    projectId: "oyun-e145e"
+                };
+
+                app = window.initializeApp(config);
+                db = window.getFirestore(app);
+                auth = window.getAuth(app);
+                
+                let currentUserId;
+                if (__initial_auth_token) {
+                    const userCredential = await window.signInWithCustomToken(auth, __initial_auth_token);
+                    currentUserId = userCredential.user.uid;
+                } else {
+                    const userCredential = await window.signInAnonymously(auth);
+                    currentUserId = userCredential.user.uid;
+                }
+                
+                setUserId(currentUserId);
+                authInitialized = true;
+
+            } catch (e) {
+                console.warn("Firebase başlatma/Auth hatası. Anonim ID ile devam ediliyor. db/auth null kalacak:", e.message);
+                // Firebase başlatılamasa bile, oyunu anonim bir ID ile çalıştırmaya devam et
+                setUserId(crypto.randomUUID());
+                // Hata durumunda db ve auth null kalır, bu da handleCreateRoom'da hata vermesine neden olur.
+            } finally {
+                setLoading(false);
+            }
         };
+
 
         // Oyun Rolleri ve Dağıtımı
         const ROLES_6 = ['Vampire', 'Vampire', 'Seer', 'Doctor', 'Villager', 'Villager'];
@@ -108,6 +158,11 @@
         };
 
         // Utility
+        const getRoomDocRef = (roomId) => {
+          if (!db) return null;
+          return window.doc(db, `/artifacts/${__app_id}/public/data/rooms/${roomId}`);
+        };
+
         const generateRoomCode = () => {
           return Math.random().toString(36).substring(2, 6).toUpperCase();
         };
@@ -178,13 +233,13 @@
         };
 
 
-        // --- CHAT BİLEŞENİ (MOCK DB'den çekiyor) ---
+        // --- CHAT BİLEŞENİ ---
 
-        const ChatComponent = ({ userId, userName, gameState, playerRole, isDead, isVampire, currentPhase }) => {
+        const ChatComponent = ({ db, userId, userName, gameState, playerRole, isDead, isVampire, currentPhase }) => {
+            const [messages, setMessages] = useState([]);
             const [newMessage, setNewMessage] = useState('');
             const chatContainerRef = useRef(null);
-            
-            const messages = gameState.generalChat || []; // Mock modunda sadece generalChat'i kullanıyoruz
+            const roomId = gameState.roomId;
 
             const teamChatActive = isVampire && currentPhase === 'NIGHT_ACTIONS';
             const generalChatActive = !isDead && (currentPhase === 'DISCUSSION' || currentPhase === 'MUHTAR_VOTING' || currentPhase === 'VOTING');
@@ -206,17 +261,39 @@
                 chatName = 'Sohbet Kapalı';
             }
 
+            // Mesajları Dinle
+            useEffect(() => {
+                if (!roomId || !chatPath || !db) return;
+
+                const roomRef = getRoomDocRef(roomId);
+                if (!roomRef) return;
+
+                // Sohbet mesajlarını al
+                const unsubscribe = window.onSnapshot(roomRef, (docSnap) => {
+                    if (docSnap.exists() && docSnap.data()[chatPath]) {
+                        setMessages(docSnap.data()[chatPath].slice(-50));
+                    } else {
+                        setMessages([]);
+                    }
+                }, (error) => {
+                    console.error("Chat dinleme hatası:", error);
+                });
+
+                return () => unsubscribe();
+            }, [roomId, chatPath, db]);
+
+
             // Scroll'u En Aşağı Kaydır
             useEffect(() => {
                 if (chatContainerRef.current) {
                     chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
                 }
-            }, [messages.length]);
+            }, [messages]);
 
-            // Mesaj Gönder (Mock)
-            const sendMessage = (e) => {
+            // Mesaj Gönder
+            const sendMessage = async (e) => {
                 e.preventDefault();
-                if (!newMessage.trim() || !gameState.roomId) return;
+                if (!newMessage.trim() || !roomId || !chatPath || !db) return;
 
                 const messageData = {
                     id: Date.now().toString(),
@@ -227,25 +304,27 @@
                     role: chatPath === 'vampireChat' ? 'Takım Üyesi' : ROLE_DETAILS[playerRole]?.tr || 'Oyuncu',
                 };
 
-                const room = MOCK_DATABASE[gameState.roomId];
-                if (!room) return;
+                try {
+                    const roomRef = getRoomDocRef(roomId);
+                    if (!roomRef) return;
+                    
+                    const docSnap = await window.getDoc(roomRef);
 
-                const currentChat = room[chatPath] || [];
-                const newChat = [...currentChat.slice(-50), messageData];
-                
-                // Mock DB'yi ve React State'i güncelle
-                room[chatPath] = newChat;
-                
-                // MOCK SYNC: Diğer pencereleri manuel tetiklemek için localStorage kullan (Cross-tab sync)
-                localStorage.setItem('mock_sync', JSON.stringify({ roomId: gameState.roomId, timestamp: Date.now() }));
-                
-                setNewMessage('');
+                    if (docSnap.exists()) {
+                        const currentChat = docSnap.data()[chatPath] || [];
+                        const newChat = [...currentChat.slice(-50), messageData];
+
+                        await window.updateDoc(roomRef, {
+                            [chatPath]: newChat,
+                        });
+                        setNewMessage('');
+                    }
+                } catch (error) {
+                    console.error("Mesaj gönderme hatası:", error);
+                }
             };
 
             const isChatEnabled = teamChatActive || generalChatActive || ghostChatActive;
-            
-            // Hangi chat path'inin mesajlarını göstereceğimizi belirle
-            let currentMessages = gameState[chatPath] || [];
 
             return (
                 <div className={`${theme.card} p-4 flex flex-col h-full rounded-xl`}>
@@ -256,8 +335,8 @@
 
                     {/* Mesaj Listesi */}
                     <div ref={chatContainerRef} className="flex-1 overflow-y-auto space-y-3 p-2 custom-scrollbar">
-                        {currentMessages.length === 0 && <p className="text-center text-gray-500 italic">Henüz mesaj yok.</p>}
-                        {currentMessages.map((msg) => (
+                        {messages.length === 0 && <p className="text-center text-gray-500 italic">Henüz mesaj yok.</p>}
+                        {messages.map((msg) => (
                             <div key={msg.id} className={`p-3 rounded-lg ${msg.senderId === userId ? 'ml-auto bg-red-900/50' : 'mr-auto bg-gray-700/50'} max-w-[80%]`}>
                                 <div className={`font-semibold text-sm ${msg.senderId === userId ? 'text-white' : 'text-red-300'}`}>
                                     {msg.senderId === userId ? 'Sen' : msg.senderName}
@@ -296,8 +375,8 @@
 
         // --- OYUN EKRANI BİLEŞENİ ---
 
-        const GameScreen = ({ userId, userName, gameState, handleLeaveRoom, handleNextPhase, handleDayVote, handleNightAction }) => {
-            const { players, state, dayNumber, phase, hostId, winner, votingResults, muhtarId } = gameState;
+        const GameScreen = ({ db, userId, userName, gameState, handleLeaveRoom, handleNextPhase, handleDayVote, handleNightAction }) => {
+            const { players, state, dayNumber, phase, hostId, roomId, currentKilled, currentSaved, winner, votingResults, muhtarId } = gameState;
             const muhtar = muhtarId ? players[muhtarId] : null;
 
             const myPlayer = players[userId] || {};
@@ -361,7 +440,7 @@
 
             const submitNightAction = () => {
                 if (selectedTarget && isAlive && isNight) {
-                    handleNightAction(myRole, selectedTarget, gameState.roomId);
+                    handleNightAction(myRole, selectedTarget);
                     setActionMessage('Aksiyonunuz gönderildi. Şafak bekleniyor...');
                     setSelectedTarget(null); 
                 }
@@ -372,9 +451,9 @@
                 if (!isAlive || (!isVoting && !isMuhtarVoting)) return;
 
                 if (gameState.votes && gameState.votes[userId] === targetId) {
-                    handleDayVote(null, gameState.roomId); // Oyunu geri çek
+                    handleDayVote(null); // Oyunu geri çek
                 } else {
-                    handleDayVote(targetId, gameState.roomId); // Oy ver
+                    handleDayVote(targetId); // Oy ver
                 }
             };
 
@@ -460,7 +539,7 @@
 
                         {revealed && (
                             <button
-                                onClick={() => handleNextPhase(gameState.roomId)}
+                                onClick={() => handleNextPhase()}
                                 className={`${theme.button} mt-8 animate-fade-in delay-1000`}
                             >
                                 Oyuna Başla
@@ -615,7 +694,7 @@
                                 <div className="mt-8 pt-4 border-t border-red-900/50 text-center">
                                     <p className="text-sm text-red-400 mb-2">Host Kontrolü:</p>
                                     <button
-                                        onClick={() => handleNextPhase(gameState.roomId)}
+                                        onClick={handleNextPhase}
                                         className={theme.button}
                                     >
                                         {isNight ? 'Şafağı Sök' : isMuhtarVoting ? 'Muhtar Seçimini Bitir' : isVoting ? 'Linci Onayla' : 'Tartışmayı Bitir / Oylamaya Geç'}
@@ -629,6 +708,7 @@
                     <div className="col-span-12 lg:col-span-4 flex flex-col space-y-6">
                         <div className="flex-1 min-h-[300px] lg:min-h-[500px]">
                             <ChatComponent
+                                db={db}
                                 userId={userId}
                                 userName={userName}
                                 gameState={gameState}
@@ -666,7 +746,7 @@
 
         // --- LOBİ EKRANI BİLEŞENİ ---
 
-        const LobbyScreen = ({ userId, userName, gameState, handleLeaveRoom, handleStartGame }) => {
+        const LobbyScreen = ({ db, userId, userName, gameState, handleLeaveRoom, handleStartGame }) => {
             const { players, hostId, roomId } = gameState;
             const isHost = userId === hostId;
             const playerCount = Object.keys(players).length;
@@ -697,7 +777,7 @@
                                 {isReadyToStart ? `Başlamak için yeterli oyuncu (${playerCount}) var.` : `Oyun için minimum 6, maksimum 10 oyuncu gerekir. (Mevcut: ${playerCount})`}
                             </p>
                             <button
-                                onClick={() => handleStartGame(gameState.roomId)}
+                                onClick={handleStartGame}
                                 disabled={!isReadyToStart || isTooManyPlayers}
                                 className={`${theme.button} w-full ${!isReadyToStart || isTooManyPlayers ? 'opacity-50 cursor-not-allowed' : ''}`}
                             >
@@ -777,80 +857,80 @@
             const [roomId, setRoomId] = useState(null);
             const [gameState, setGameState] = useState(null);
             const [loading, setLoading] = useState(true);
-            const [error, setError] = useState("UYARI: Oyun Yerel (Mock) modda çalışıyor. Odalar tarayıcınızda geçici olarak saklanacaktır.");
-            
-            // Bu sadece Mock DB'deki değişiklikleri yakalamak için var
-            const [mockSyncKey, setMockSyncKey] = useState(Date.now());
+            const [error, setError] = useState(null);
 
-            // --- FIREBASE AUTH VE İLK BAŞLATMA (MOCK) ---
+            // --- FIREBASE AUTH VE İLK BAŞLATMA ---
             useEffect(() => {
-                initializeFirebase(setUserId, setLoading);
+                if (!authInitialized) {
+                    initializeFirebase(setUserId, setLoading, setError);
+                }
             }, []);
 
-            // --- MOCK DB SYNCHRONIZATION LISTENER ---
+            // --- ODA DURUMUNU DİNLEME (onSnapshot) ---
             useEffect(() => {
-                if (!userId || !roomId) return;
-                
-                // localStorage değişikliklerini dinle (Başka sekmeden gelen güncellemeler için)
-                const handleStorageChange = (e) => {
-                    if (e.key === 'mock_sync') {
-                        setMockSyncKey(Date.now()); // State'i tetikle
+                if (!db || !roomId || !userId) return;
+
+                const roomRef = getRoomDocRef(roomId);
+                if (!roomRef) return; // DB başlatılmadıysa ref null dönebilir
+
+                const unsubscribe = window.onSnapshot(roomRef, (docSnap) => {
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
+                        
+                        // Oyuncu listede yoksa lobiye dön (Hata Düzeltmesi)
+                        if (!data.players[userId]) {
+                             console.log("Oyuncu artık bu odanın oyuncu listesinde değil. Lobiye dönülüyor.");
+                             setRoomId(null);
+                             setGameState(null);
+                             return;
+                        }
+                        setGameState({ ...data, roomId });
+                        setError(null);
+                    } else {
+                        // Oda silinmişse veya bulunamazsa
+                        setRoomId(null);
+                        setGameState(null);
+                        setError("Oda bulunamadı veya silindi.");
                     }
-                };
+                }, (err) => {
+                    console.error("Firestore dinleme hatası:", err);
+                    setError("Veri güncellenirken bir hata oluştu.");
+                });
 
-                window.addEventListener('storage', handleStorageChange);
-                
-                // Local state'i MOCK_DATABASE'den çek
-                const data = MOCK_DATABASE[roomId];
-                if (data) {
-                    if (!data.players[userId]) {
-                         setRoomId(null);
-                         setGameState(null);
-                         setError("Odadan ayrıldınız veya atıldınız (Mock Mod).");
-                         return;
-                    }
-                    setGameState({ ...data, roomId });
-                    setError(prevState => (prevState && prevState.startsWith("UYARI")) ? prevState : null);
-                } else {
-                    setRoomId(null);
-                    setGameState(null);
-                    setError("Oda bulunamadı veya silindi (Mock Mod).");
-                }
-
-
-                return () => window.removeEventListener('storage', handleStorageChange);
-            }, [roomId, userId, mockSyncKey]); // mockSyncKey ile manuel tetikleme
-
-            // MOCK: Mock DB'yi güncelledikten sonra React'i bilgilendiren fonksiyon
-            const mockSaveAndSync = (newGameState, newRoomId = roomId) => {
-                MOCK_DATABASE[newRoomId] = newGameState;
-                
-                // Başka sekmedeki oyuncuları bilgilendir (Mock Sync)
-                localStorage.setItem('mock_sync', JSON.stringify({ roomId: newRoomId, timestamp: Date.now() }));
-                
-                // Mevcut sekmeyi güncelle
-                setMockSyncKey(Date.now()); 
-            };
+                return () => unsubscribe();
+            }, [roomId, userId, db]);
 
 
             // --- ODA YÖNETİM FONKSİYONLARI ---
 
-            const handleCreateRoom = () => {
-                if (!userName.trim() || !userId) {
+            const handleCreateRoom = async () => {
+                // Ayrıntılı Hata Kontrolü
+                if (!userName.trim()) {
                     setError("Hata: Kullanıcı adı boş olamaz.");
                     return;
                 }
+                if (!userId) {
+                    setError("Hata: Oturum açılamadı. Lütfen sayfayı yenileyin (Auth/Kimlik doğrulama başarısız).");
+                    return;
+                }
+                if (!db) {
+                     setError("Hata: Veritabanı bağlantısı kurulamadı. Gerçek zamanlı oyun için geçerli bir Firebase yapılandırması gereklidir.");
+                     return;
+                }
+                
                 setLoading(true);
 
                 try {
                     let newRoomId;
-                    let attempts = 0;
+                    let docSnap;
+
+                    // Tekrar eden kodları önlemek için kontrol et
                     do {
                         newRoomId = generateRoomCode();
-                        attempts++;
-                    } while (MOCK_DATABASE[newRoomId] && attempts < 10);
-
-                    if (MOCK_DATABASE[newRoomId]) throw new Error("Oda kodu oluşturulamadı.");
+                        const ref = getRoomDocRef(newRoomId);
+                        if (!ref) throw new Error("Firebase Document Reference Error");
+                        docSnap = await window.getDoc(ref);
+                    } while (docSnap.exists());
 
                     const initialPlayer = { userId, name: userName, role: null, status: 'alive', isHost: true, lastProtectedId: null, seerResult: {} }; 
 
@@ -871,37 +951,58 @@
                         currentSaved: null,
                         winner: null,
                         muhtarId: null,
-                        roomId: newRoomId, // RoomId'yi state'e ekle
                     };
                     
-                    mockSaveAndSync(newGameState, newRoomId);
+                    const ref = getRoomDocRef(newRoomId);
+                    if (!ref) throw new Error("Firebase Document Reference Error");
+
+                    await window.setDoc(ref, newGameState);
                     setRoomId(newRoomId);
-                    setError("UYARI: Oyun Yerel (Mock) modda çalışıyor. Odalar tarayıcınızda geçici olarak saklanacaktır.");
+                    setError(null);
 
                 } catch (e) {
                     console.error("Oda oluşturma hatası:", e);
-                    setError("Oda oluşturulamadı: " + e.message);
+                    setError("Oda oluşturulamadı. (Ayrıntılar için konsolu kontrol edin).");
                 } finally {
                     setLoading(false);
                 }
             };
 
-            const handleJoinRoom = (code) => {
-                if (!userName.trim() || !userId || code.length !== 4) {
-                    setError("Hata: Kullanıcı adı veya kod eksik/yanlış.");
+            const handleJoinRoom = async (code) => {
+                // Ayrıntılı Hata Kontrolü
+                if (!userName.trim()) {
+                    setError("Hata: Kullanıcı adı boş olamaz.");
                     return;
                 }
+                if (!userId) {
+                    setError("Hata: Oturum açılamadı. Lütfen sayfayı yenileyin (Auth/Kimlik doğrulama başarısız).");
+                    return;
+                }
+                if (!db) {
+                     setError("Hata: Veritabanı bağlantısı kurulamadı. Gerçek zamanlı oyun için geçerli bir Firebase yapılandırması gereklidir.");
+                     return;
+                }
+                if (code.length !== 4) {
+                     setError("Hata: Oda kodu 4 karakter olmalıdır.");
+                     return;
+                }
+
                 setLoading(true);
 
                 try {
-                    const roomData = MOCK_DATABASE[code];
+                    const roomRef = getRoomDocRef(code);
+                    if (!roomRef) throw new Error("Firebase Document Reference Error");
 
-                    if (!roomData || roomData.state !== 'LOBBY') {
+                    const docSnap = await window.getDoc(roomRef);
+                    
+                    if (!docSnap.exists() || docSnap.data().state !== 'LOBBY') {
                          setError("Geçersiz Oda Kodu veya Oyun Zaten Başlamış.");
                          setLoading(false);
                          return;
                     }
                     
+                    const roomData = docSnap.data();
+
                     if (Object.keys(roomData.players).length >= 10) {
                          setError("Oda doldu (Max 10 Oyuncu).");
                          setLoading(false);
@@ -910,64 +1011,90 @@
 
                     const newPlayer = { userId, name: userName, role: null, status: 'alive', isHost: false, lastProtectedId: null, seerResult: {} }; 
 
+                    // Zaten odadaysa
                     if (roomData.players[userId]) {
                         setRoomId(code);
                         setLoading(false);
                         return;
                     }
 
+                    // Firestore'a oyuncuyu ekle ve genel sohbete katılım mesajı ekle
                     const updatedGeneralChat = [
                         ...(roomData.generalChat || []), 
-                        { id: Date.now().toString(), senderName: 'Sistem', text: `${userName} lobiye katıldı.`, timestamp: new Date().toISOString() }
+                        { 
+                            id: Date.now().toString(), 
+                            senderName: 'Sistem', 
+                            text: `${userName} lobiye katıldı.`, 
+                            timestamp: new Date().toISOString() 
+                        }
                     ];
                     
-                    const updatedPlayers = { ...roomData.players, [userId]: newPlayer };
-                    
-                    const newGameState = { ...roomData, players: updatedPlayers, generalChat: updatedGeneralChat };
+                    await window.updateDoc(roomRef, {
+                        [`players.${userId}`]: newPlayer,
+                        generalChat: updatedGeneralChat,
+                    });
 
-                    mockSaveAndSync(newGameState, code);
+                    // Başarılı katılım (Hata Düzeltmesi: setRoomId'nin updateDoc sonrası çalışmasını sağla)
                     setRoomId(code);
-                    setError("UYARI: Oyun Yerel (Mock) modda çalışıyor. Odalar tarayıcınızda geçici olarak saklanacaktır.");
-
+                    setError(null);
                 } catch (e) {
                     console.error("Odaya katılma hatası:", e);
-                    setError("Odaya katılınamadı: " + e.message);
+                    setError("Odaya katılınamadı. (Ayrıntılar için konsolu kontrol edin).");
                 } finally {
                     setLoading(false);
                 }
             };
 
-            const handleLeaveRoom = () => {
-                if (!roomId || !userId) return;
+            const handleLeaveRoom = async () => {
+                if (!roomId || !userId || !db) return;
                 setLoading(true);
 
                 try {
-                    const data = MOCK_DATABASE[roomId];
-                    if (!data) return;
-                        
-                    if (!data.players[userId]) return;
+                    const roomRef = getRoomDocRef(roomId);
+                    if (!roomRef) throw new Error("Firebase Document Reference Error");
 
-                    const departingPlayerName = data.players[userId].name;
-                    const updatedPlayers = { ...data.players };
-                    delete updatedPlayers[userId];
+                    const docSnap = await window.getDoc(roomRef);
 
-                    if (Object.keys(updatedPlayers).length === 0) {
-                        delete MOCK_DATABASE[roomId];
-                    } else {
-                        let newHostId = data.hostId;
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
                         
-                        if (data.hostId === userId) {
-                            newHostId = Object.keys(updatedPlayers)[0];
-                            updatedPlayers[newHostId] = { ...updatedPlayers[newHostId], isHost: true };
+                        if (!data.players[userId]) {
+                             // Oyuncu zaten ayrılmış
+                             setRoomId(null); setGameState(null); setLoading(false); return;
                         }
-                        
-                        const updatedGeneralChat = [
-                            ...(data.generalChat || []), 
-                            { id: Date.now().toString(), senderName: 'Sistem', text: `${departingPlayerName} odadan ayrıldı.`, timestamp: new Date().toISOString() }
-                        ];
 
-                        const newGameState = { ...data, players: updatedPlayers, hostId: newHostId, generalChat: updatedGeneralChat };
-                        mockSaveAndSync(newGameState);
+                        const departingPlayerName = data.players[userId].name;
+                        const updatedPlayers = { ...data.players };
+                        delete updatedPlayers[userId];
+
+                        if (Object.keys(updatedPlayers).length === 0) {
+                            // Odada kimse kalmadıysa odayı sil
+                            await window.deleteDoc(roomRef);
+                        } else {
+                            let newHostId = data.hostId;
+                            
+                            // Host ayrılıyorsa yeni bir host ata
+                            if (data.hostId === userId) {
+                                newHostId = Object.keys(updatedPlayers)[0];
+                                updatedPlayers[newHostId] = { ...updatedPlayers[newHostId], isHost: true };
+                            }
+                            
+                            const updatedGeneralChat = [
+                                ...(data.generalChat || []), 
+                                { 
+                                    id: Date.now().toString(), 
+                                    senderName: 'Sistem', 
+                                    text: `${departingPlayerName} odadan ayrıldı.`, 
+                                    timestamp: new Date().toISOString() 
+                                }
+                            ];
+
+                            await window.updateDoc(roomRef, {
+                                players: updatedPlayers,
+                                hostId: newHostId,
+                                generalChat: updatedGeneralChat,
+                            });
+                        }
                     }
 
                 } catch (e) {
@@ -981,8 +1108,8 @@
 
             // --- OYUN BAŞLATMA VE ROL DAĞITIMI ---
 
-            const handleStartGame = (roomId) => {
-                if (!gameState || !userId || gameState.hostId !== userId || gameState.state !== 'LOBBY') return;
+            const handleStartGame = async () => {
+                if (!gameState || !userId || gameState.hostId !== userId || gameState.state !== 'LOBBY' || !db) return;
 
                 const playerCount = Object.keys(gameState.players).length;
                 if (playerCount < 6 || playerCount > 10) {
@@ -1007,26 +1134,62 @@
                     roleIndex++;
                 });
                 
-                const newGameState = {
-                    ...gameState,
-                    players: newPlayers,
-                    state: 'ROLE_REVEAL', 
-                    dayNumber: 0,
-                    phase: 'REVEAL',
-                    generalChat: [...gameState.generalChat, { id: Date.now().toString(), senderName: 'Sistem', text: 'Oyun başladı! Rollerinizi kontrol edin.', timestamp: new Date().toISOString() }],
-                    vampireChat: [],
-                    votes: {},
-                    nightVotes: {},
-                    votingResults: null,
-                    currentKilled: null,
-                    currentSaved: null,
-                    winner: null,
-                    muhtarId: null, 
-                };
+                const roomRef = getRoomDocRef(roomId);
+                if (!roomRef) return;
 
-                mockSaveAndSync(newGameState);
+                try {
+                    await window.updateDoc(roomRef, {
+                        players: newPlayers,
+                        state: 'ROLE_REVEAL', 
+                        dayNumber: 0,
+                        phase: 'REVEAL',
+                        generalChat: [{ id: Date.now().toString(), senderName: 'Sistem', text: 'Oyun başladı! Rollerinizi kontrol edin.', timestamp: new Date().toISOString() }],
+                        vampireChat: [],
+                        votes: {},
+                        nightVotes: {},
+                        votingResults: null,
+                        currentKilled: null,
+                        currentSaved: null,
+                        winner: null,
+                        muhtarId: null, 
+                    });
+                } catch (e) {
+                    console.error("Oyunu başlatma hatası:", e);
+                    setError("Oyunu başlatırken hata oluştu.");
+                }
             };
             
+            // --- YARDIMCI FONKSİYON: Muhtar Seçimini İşleme ---
+            const processMuhtarVotes = (currentPlayers, currentVotes) => {
+                const voteCounts = {};
+                Object.values(currentVotes).forEach(targetId => {
+                    voteCounts[targetId] = (voteCounts[targetId] || 0) + 1;
+                });
+                
+                let maxVotes = 0;
+                let tiedCandidates = [];
+
+                Object.entries(voteCounts).forEach(([targetId, count]) => {
+                    if (count > maxVotes) {
+                        maxVotes = count;
+                        tiedCandidates = [targetId];
+                    } else if (count === maxVotes) {
+                        tiedCandidates.push(targetId);
+                    }
+                });
+
+                if (tiedCandidates.length === 1) {
+                    const electedMuhtarId = tiedCandidates[0];
+                    return {
+                        electedMuhtarId: electedMuhtarId,
+                        message: `${currentPlayers[electedMuhtarId].name} oyuncusu Köy Muhtarı olarak seçildi!`
+                    };
+                }
+
+                return { electedMuhtarId: null, message: "Muhtar seçimi yapılamadı, eşitlik bozuldu veya oy kullanılmadı. Oyun tartışma fazına geçiyor." };
+            };
+
+
             // --- OYUN İLERLEME (PHASE TRANSITION) ---
 
             const checkWinCondition = (currentPlayers) => {
@@ -1034,9 +1197,171 @@
                 const aliveVampires = alivePlayers.filter(p => p.role === 'Vampire').length;
                 const aliveVillagersTeam = alivePlayers.filter(p => ROLE_DETAILS[p.role]?.team === 'Villagers').length; 
 
-                if (aliveVampires >= aliveVillagersTeam) return 'VAMPIRES';
-                if (aliveVampires === 0) return 'VILLAGERS';
+                if (aliveVampires >= aliveVillagersTeam) {
+                    return 'VAMPIRES';
+                }
+                if (aliveVampires === 0) {
+                    return 'VILLAGERS';
+                }
                 return null;
+            };
+
+
+            const handleNextPhase = async () => {
+                if (!gameState || !userId || gameState.hostId !== userId || gameState.state === 'GAME_OVER' || !db) return;
+
+                let newState = { ...gameState };
+                let nextState;
+                let nextPhase;
+
+                const winner = checkWinCondition(newState.players);
+                if (winner) {
+                    await window.updateDoc(getRoomDocRef(roomId), { state: 'GAME_OVER', winner });
+                    return;
+                }
+
+                const roomRef = getRoomDocRef(roomId);
+                if (!roomRef) return;
+
+                // 2. Faz Geçiş Mantığı
+                if (newState.state === 'ROLE_REVEAL' || newState.phase === 'REVEAL') {
+                    nextState = 'DAY';
+                    nextPhase = 'MUHTAR_VOTING';
+                    newState.dayNumber = 1;
+                    newState.currentKilled = null;
+                    newState.currentSaved = null;
+                } else if (newState.phase === 'MUHTAR_VOTING') {
+                    const muhtarResult = processMuhtarVotes(newState.players, newState.votes);
+                    
+                    if (muhtarResult.electedMuhtarId && newState.players[muhtarResult.electedMuhtarId].status === 'alive') {
+                        newState.muhtarId = muhtarResult.electedMuhtarId;
+                    } else {
+                         newState.muhtarId = null;
+                    }
+                    
+                    newState.generalChat.push({ id: Date.now().toString(), senderName: 'Sistem', text: muhtarResult.message, timestamp: new Date().toISOString() });
+                    newState.votes = {};
+
+                    nextState = 'DAY';
+                    nextPhase = 'DISCUSSION';
+
+                } else if (newState.phase === 'DISCUSSION') {
+                    nextState = 'DAY';
+                    nextPhase = 'VOTING';
+                } else if (newState.phase === 'VOTING') {
+                    // Gündüz Oylama Sonucu İşle 
+                    const { executedName, executedRole, executedUserId, jesterWin } = processDayVotes(newState.players, newState.votes, newState.muhtarId);
+
+                    newState.votingResults = { executedName, executedRole };
+
+                    // Jester Kazanma Kontrolü
+                    if (jesterWin) {
+                        await window.updateDoc(roomRef, { state: 'GAME_OVER', winner: 'JESTER' });
+                        return;
+                    }
+                    
+                    if (executedUserId) {
+                        newState.players[executedUserId].status = 'dead';
+                        newState.generalChat.push({ id: Date.now().toString(), senderName: 'Sistem', text: `${executedName} linç edildi. Rolü: ${ROLE_DETAILS[executedRole]?.tr} idi.`, timestamp: new Date().toISOString() });
+                    
+                        // Muhtar öldüyse muhtarId'yi sıfırla
+                        if (executedUserId === newState.muhtarId) {
+                            newState.muhtarId = null;
+                            newState.generalChat.push({ id: Date.now().toString(), senderName: 'Sistem', text: 'Muhtar linç edildi! Köyün oyu artık 1x olarak sayılacak.', timestamp: new Date().toISOString() });
+                        }
+
+                    } else {
+                         newState.generalChat.push({ id: Date.now().toString(), senderName: 'Sistem', text: 'Kimse çoğunluk oyu alamadı, linç gerçekleşmedi.', timestamp: new Date().toISOString() });
+                    }
+
+                    // Yeniden Kazanma Kontrolü (Diğer roller için)
+                    const afterDayWinner = checkWinCondition(newState.players);
+                    if (afterDayWinner) {
+                        await window.updateDoc(roomRef, { state: 'GAME_OVER', winner: afterDayWinner });
+                        return;
+                    }
+
+                    nextState = 'NIGHT_ACTIONS';
+                    nextPhase = 'NIGHT_ACTIONS';
+                    newState.votes = {}; 
+
+                } else if (newState.phase === 'NIGHT_ACTIONS') {
+                    // Gece Aksiyonlarını İşle
+                    const nightResults = processNightActions(newState.players, newState.nightVotes);
+
+                    newState.currentKilled = nightResults.killed;
+                    newState.currentSaved = nightResults.saved;
+
+                    // Protector's action logic: Update the last protected ID
+                    Object.keys(newState.players).forEach(pId => {
+                        if (newState.players[pId].role === 'Protector') {
+                            newState.players[pId].lastProtectedId = nightResults.protectorTargetId;
+                        }
+                    });
+
+
+                    if (nightResults.killed) { 
+                        newState.players[nightResults.killed.userId].status = 'dead';
+                        
+                        if (nightResults.killed.userId === newState.muhtarId) {
+                            newState.muhtarId = null;
+                            newState.generalChat.push({ id: Date.now().toString(), senderName: 'Sistem', text: 'Muhtar gece saldırısında öldü!', timestamp: new Date().toISOString() });
+                        }
+                        
+                        // Kahin sonucunu güncelle
+                        if(nightResults.seerResult) {
+                            Object.keys(newState.players).forEach(pId => {
+                                 if (newState.players[pId].role === 'Seer' && newState.players[pId].status === 'alive') {
+                                      newState.players[pId].seerResult = { ...newState.players[pId].seerResult, ...nightResults.seerResult };
+                                 }
+                            });
+                        }
+                    } else if (nightResults.saved) {
+                         // Kahin sonucunu güncelle
+                         if(nightResults.seerResult) {
+                             Object.keys(newState.players).forEach(pId => {
+                                  if (newState.players[pId].role === 'Seer' && newState.players[pId].status === 'alive') {
+                                      newState.players[pId].seerResult = { ...newState.players[pId].seerResult, ...nightResults.seerResult };
+                                  }
+                             });
+                         }
+                    }
+                    
+                    newState.nightVotes = {};
+                    newState.dayNumber += 1;
+                    nextState = 'DAY';
+                    nextPhase = 'DISCUSSION';
+                    newState.generalChat.push({ id: Date.now().toString(), senderName: 'Sistem', text: 'Güneş doğdu! Yeni güne başlıyoruz.', timestamp: new Date().toISOString() });
+
+
+                    // Yeniden Kazanma Kontrolü
+                    const afterNightWinner = checkWinCondition(newState.players);
+                    if (afterNightWinner) {
+                        await window.updateDoc(roomRef, { state: 'GAME_OVER', winner: afterNightWinner });
+                        return;
+                    }
+                }
+
+
+                // 3. Veritabanına Kaydet
+                try {
+                    await window.updateDoc(roomRef, {
+                        state: nextState,
+                        phase: nextPhase,
+                        dayNumber: newState.dayNumber,
+                        players: newState.players,
+                        votes: newState.votes,
+                        nightVotes: newState.nightVotes,
+                        currentKilled: newState.currentKilled,
+                        currentSaved: newState.currentSaved,
+                        votingResults: newState.votingResults,
+                        generalChat: newState.generalChat,
+                        muhtarId: newState.muhtarId,
+                    });
+                } catch (e) {
+                    console.error("Faz geçişi hatası:", e);
+                    setError("Oyun fazı ilerletilemedi.");
+                }
             };
 
             // Gündüz Oylamasını İşleme (Linç)
@@ -1047,7 +1372,11 @@
                     const targetId = currentVotes[voterId]; 
                     if (currentPlayers[voterId]?.status !== 'alive') return; 
 
-                    let voteWeight = (voterId === muhtarId) ? 2 : 1;
+                    let voteWeight = 1;
+                    
+                    if (voterId === muhtarId) {
+                        voteWeight = 2; 
+                    }
                     
                     voteCounts[targetId] = (voteCounts[targetId] || 0) + voteWeight;
                 });
@@ -1072,153 +1401,134 @@
                     const executedRole = currentPlayers[executedUserId].role;
                     
                     if (executedRole === 'Jester') {
-                         return { executedUserId, executedName: currentPlayers[executedUserId].name, executedRole, jesterWin: true };
+                         return {
+                            executedUserId: executedUserId,
+                            executedName: currentPlayers[executedUserId].name,
+                            executedRole: executedRole,
+                            jesterWin: true 
+                         };
                     }
 
-                    return { executedUserId, executedName: currentPlayers[executedUserId].name, executedRole, jesterWin: false };
+                    return {
+                        executedUserId: executedUserId,
+                        executedName: currentPlayers[executedUserId].name,
+                        executedRole: executedRole,
+                        jesterWin: false
+                    };
                 }
 
                 return { executedUserId: null, executedName: null, executedRole: null, jesterWin: false };
             };
-            
-            const processMuhtarVotes = (currentPlayers, currentVotes) => {
-                const voteCounts = {};
-                Object.values(currentVotes).forEach(targetId => {
-                    voteCounts[targetId] = (voteCounts[targetId] || 0) + 1;
-                });
-                
-                let maxVotes = 0;
-                let tiedCandidates = [];
 
-                Object.entries(voteCounts).forEach(([targetId, count]) => {
-                    if (count > maxVotes) {
-                        maxVotes = count;
-                        tiedCandidates = [targetId];
-                    } else if (count === maxVotes) {
-                        tiedCandidates.push(targetId);
-                    }
-                });
-
-                if (tiedCandidates.length === 1) {
-                    const electedMuhtarId = tiedCandidates[0];
-                    return { electedMuhtarId, message: `${currentPlayers[electedMuhtarId].name} oyuncusu Köy Muhtarı olarak seçildi!` };
-                }
-
-                return { electedMuhtarId: null, message: "Muhtar seçimi yapılamadı, eşitlik bozuldu veya oy kullanılmadı. Oyun tartışma fazına geçiyor." };
-            };
-            
+            // Gece Aksiyonlarını İşleme
             const processNightActions = (currentPlayers, nightVotes) => {
                 const actionTargets = {}; 
+
                 Object.entries(nightVotes).forEach(([role, targetId]) => {
                     const playerByRole = Object.values(currentPlayers).find(p => p.role === role && p.status === 'alive');
                     if (!playerByRole) return;
-                    if (!actionTargets[role] || role === 'Vampire') { actionTargets[role] = targetId; } 
+                    
+                    if (!actionTargets[role] || role === 'Vampire') {
+                        actionTargets[role] = targetId;
+                    } 
                 });
                 
-                const { Vampire: vampireTargetId, Doctor: doctorTargetId, Seer: seerTargetId, Protector: protectorTargetId } = actionTargets;
+                const vampireTargetId = actionTargets['Vampire'];
+                const doctorTargetId = actionTargets['Doctor'];
+                const seerTargetId = actionTargets['Seer'];
+                const protectorTargetId = actionTargets['Protector']; 
                 
                 let killed = null;
                 let savedPlayer = null;
                 let seerResult = null;
 
+
+                // 1. Kahin Aksiyonu
                 if (seerTargetId && currentPlayers[seerTargetId]?.status === 'alive') {
                     seerResult = { [seerTargetId]: currentPlayers[seerTargetId].role };
                 }
+
+                // 2. Vampir Aksiyonu (Hedef Belirlenir)
                 if (vampireTargetId && currentPlayers[vampireTargetId]?.status === 'alive') {
                     const targetPlayer = currentPlayers[vampireTargetId];
                     killed = { userId: vampireTargetId, name: targetPlayer.name, role: targetPlayer.role };
                 }
+                
+                // 3. Kurtarma Kontrolü (Doktor veya Korumacı)
                 if (killed) {
-                    let isProtected = (doctorTargetId === killed.userId) || (protectorTargetId === killed.userId);
+                    let isProtected = false;
+                    
+                    if (doctorTargetId === killed.userId) {
+                        isProtected = true;
+                    }
+                    if (protectorTargetId === killed.userId) {
+                        isProtected = true;
+                    }
+
                     if (isProtected) {
                         savedPlayer = { userId: killed.userId, name: killed.name, role: killed.role };
                         killed = null;
                     }
                 }
-                return { killed, saved: savedPlayer, seerResult, protectorTargetId: protectorTargetId || null };
+                
+                return { 
+                    killed, 
+                    saved: savedPlayer, 
+                    seerResult, 
+                    protectorTargetId: protectorTargetId || null 
+                };
             };
 
-            const handleNextPhase = (roomId) => {
-                if (!gameState || !userId || gameState.hostId !== userId || gameState.state === 'GAME_OVER') return;
-
-                let newState = { ...gameState };
-                let winner = checkWinCondition(newState.players);
-                if (winner) { mockSaveAndSync({ ...newState, state: 'GAME_OVER', winner }); return; }
-
-                if (newState.state === 'ROLE_REVEAL' || newState.phase === 'REVEAL') {
-                    newState.dayNumber = 1; newState.currentKilled = null; newState.currentSaved = null;
-                    newState.state = 'DAY'; newState.phase = 'MUHTAR_VOTING';
-                } else if (newState.phase === 'MUHTAR_VOTING') {
-                    const muhtarResult = processMuhtarVotes(newState.players, newState.votes);
-                    if (muhtarResult.electedMuhtarId && newState.players[muhtarResult.electedMuhtarId].status === 'alive') {
-                        newState.muhtarId = muhtarResult.electedMuhtarId;
-                    } else { newState.muhtarId = null; }
-                    newState.generalChat.push({ id: Date.now().toString(), senderName: 'Sistem', text: muhtarResult.message, timestamp: new Date().toISOString() });
-                    newState.votes = {}; newState.state = 'DAY'; newState.phase = 'DISCUSSION';
-                } else if (newState.phase === 'DISCUSSION') {
-                    newState.state = 'DAY'; newState.phase = 'VOTING';
-                } else if (newState.phase === 'VOTING') {
-                    const { executedName, executedRole, executedUserId, jesterWin } = processDayVotes(newState.players, newState.votes, newState.muhtarId);
-                    newState.votingResults = { executedName, executedRole };
-                    if (jesterWin) { mockSaveAndSync({ ...newState, state: 'GAME_OVER', winner: 'JESTER' }); return; }
-                    
-                    if (executedUserId) {
-                        newState.players[executedUserId].status = 'dead';
-                        newState.generalChat.push({ id: Date.now().toString(), senderName: 'Sistem', text: `${executedName} linç edildi. Rolü: ${ROLE_DETAILS[executedRole]?.tr} idi.`, timestamp: new Date().toISOString() });
-                        if (executedUserId === newState.muhtarId) { newState.muhtarId = null; newState.generalChat.push({ id: Date.now().toString(), senderName: 'Sistem', text: 'Muhtar linç edildi! Köyün oyu artık 1x olarak sayılacak.', timestamp: new Date().toISOString() }); }
-                    } else { newState.generalChat.push({ id: Date.now().toString(), senderName: 'Sistem', text: 'Kimse çoğunluk oyu alamadı, linç gerçekleşmedi.', timestamp: new Date().toISOString() }); }
-
-                    winner = checkWinCondition(newState.players);
-                    if (winner) { mockSaveAndSync({ ...newState, state: 'GAME_OVER', winner }); return; }
-
-                    newState.state = 'NIGHT_ACTIONS'; newState.phase = 'NIGHT_ACTIONS'; newState.votes = {}; 
-                } else if (newState.phase === 'NIGHT_ACTIONS') {
-                    const nightResults = processNightActions(newState.players, newState.nightVotes);
-                    newState.currentKilled = nightResults.killed; newState.currentSaved = nightResults.saved;
-
-                    Object.keys(newState.players).forEach(pId => { if (newState.players[pId].role === 'Protector') newState.players[pId].lastProtectedId = nightResults.protectorTargetId; });
-
-                    if (nightResults.killed) { 
-                        newState.players[nightResults.killed.userId].status = 'dead';
-                        if (nightResults.killed.userId === newState.muhtarId) { newState.muhtarId = null; newState.generalChat.push({ id: Date.now().toString(), senderName: 'Sistem', text: 'Muhtar gece saldırısında öldü!', timestamp: new Date().toISOString() }); }
-                    }
-                    if(nightResults.seerResult) {
-                        Object.keys(newState.players).forEach(pId => {
-                            if (newState.players[pId].role === 'Seer' && newState.players[pId].status === 'alive') newState.players[pId].seerResult = { ...newState.players[pId].seerResult, ...nightResults.seerResult };
-                        });
-                    }
-                    
-                    newState.nightVotes = {}; newState.dayNumber += 1;
-                    newState.state = 'DAY'; newState.phase = 'DISCUSSION';
-                    newState.generalChat.push({ id: Date.now().toString(), senderName: 'Sistem', text: 'Güneş doğdu! Yeni güne başlıyoruz.', timestamp: new Date().toISOString() });
-
-                    winner = checkWinCondition(newState.players);
-                    if (winner) { mockSaveAndSync({ ...newState, state: 'GAME_OVER', winner }); return; }
-                }
-
-                mockSaveAndSync(newState);
-            };
 
             // --- KULLANICI OY VERME / AKSİYON GÖNDERME ---
 
-            const handleDayVote = (targetId, roomId) => {
-                if (!gameState || (gameState.phase !== 'VOTING' && gameState.phase !== 'MUHTAR_VOTING') || !userId || gameState.players[userId]?.status !== 'alive') return;
+            const handleDayVote = async (targetId) => {
+                if (!gameState || (gameState.phase !== 'VOTING' && gameState.phase !== 'MUHTAR_VOTING') || !userId || gameState.players[userId]?.status !== 'alive' || !db) return;
                 
                 const newVotes = { ...gameState.votes };
-                
-                if (targetId === null) { delete newVotes[userId]; } 
-                else if (gameState.players[targetId]?.status === 'alive') { newVotes[userId] = targetId; } 
-                else { console.error("Ölmüş bir oyuncuya oy verilemez."); return; }
-                
-                mockSaveAndSync({ ...gameState, votes: newVotes });
+                const roomRef = getRoomDocRef(roomId);
+                if (!roomRef) return;
+
+                if (targetId === null) {
+                    // Oy geri çekme
+                    delete newVotes[userId];
+                } else {
+                    // Oy verme (sadece hayatta olanlara oy verilebilir)
+                    if (gameState.players[targetId]?.status === 'alive') {
+                        newVotes[userId] = targetId;
+                    } else {
+                        console.error("Ölmüş bir oyuncuya oy verilemez.");
+                        return;
+                    }
+                }
+
+                try {
+                    await window.updateDoc(roomRef, { votes: newVotes });
+                } catch (e) {
+                    console.error("Oy verme hatası:", e);
+                }
             };
             
-            const handleNightAction = (role, targetId, roomId) => {
-                 if (!gameState || gameState.phase !== 'NIGHT_ACTIONS' || !userId || gameState.players[userId]?.status !== 'alive' || !ROLE_DETAILS[role]?.nightAction) return;
-                 if (gameState.players[targetId]?.status !== 'alive') { console.error("Ölmüş bir oyuncuyu hedefleyemezsiniz."); return; }
+            const handleNightAction = async (role, targetId) => {
+                 if (!gameState || gameState.phase !== 'NIGHT_ACTIONS' || !userId || gameState.players[userId]?.status !== 'alive' || !db) return;
+                 if (!ROLE_DETAILS[role]?.nightAction) return;
+                 
+                 // Aksiyon hedefi hayatta olmalı
+                 if (gameState.players[targetId]?.status !== 'alive') {
+                     console.error("Ölmüş bir oyuncuyu hedefleyemezsiniz.");
+                     return;
+                 }
 
+                 const roomRef = getRoomDocRef(roomId);
+                 if (!roomRef) return;
+                 
                  const nightVotes = { ...gameState.nightVotes, [role]: targetId };
-                 mockSaveAndSync({ ...gameState, nightVotes: nightVotes });
+
+                 try {
+                     await window.updateDoc(roomRef, { nightVotes });
+                 } catch (e) {
+                     console.error("Gece aksiyonu hatası:", e);
+                 }
             };
 
 
@@ -1232,34 +1542,43 @@
                 );
             }
 
-            if (error && !roomId) {
+            if (error) {
                 // Hata mesajını göster
                 return (
                     <div className={`p-8 rounded-xl ${theme.card} text-center max-w-lg mx-auto mt-10`}>
-                        <h1 className="text-4xl font-extrabold mb-4 text-red-500">Uyarı!</h1>
+                        <h1 className="text-4xl font-extrabold mb-4 text-red-500">Hata!</h1>
                         <p className="text-lg text-gray-300 mb-6">{error}</p>
-                        <button onClick={() => window.location.reload()} className={theme.button}>Tekrar Dene (Gerekli Değil)</button>
+                        <button onClick={() => window.location.reload()} className={theme.button}>Tekrar Dene</button>
                     </div>
                 );
             }
             
             // Oda içindeyse (Lobi veya Oyun)
             if (roomId && gameState) {
-                const ScreenComponent = gameState.state === 'LOBBY' ? LobbyScreen : GameScreen;
+                if (gameState.state === 'LOBBY') {
+                    return (
+                        <div className={`min-h-screen p-6 md:p-10 ${theme.bg} font-sans`}>
+                            <LobbyScreen
+                                db={db}
+                                userId={userId}
+                                userName={userName}
+                                gameState={gameState}
+                                handleLeaveRoom={handleLeaveRoom}
+                                handleStartGame={handleStartGame}
+                            />
+                        </div>
+                    );
+                }
 
+                // Oyun başladıysa
                 return (
                     <div className={`min-h-screen p-4 md:p-8 ${theme.bg} font-sans`}>
-                        {error && error.startsWith("UYARI") && (
-                             <div className="fixed top-0 left-0 right-0 p-3 bg-yellow-700/80 text-white text-center text-sm font-semibold z-50">
-                                {error}
-                             </div>
-                        )}
-                        <ScreenComponent
+                        <GameScreen
+                            db={db}
                             userId={userId}
                             userName={userName}
                             gameState={gameState}
                             handleLeaveRoom={handleLeaveRoom}
-                            handleStartGame={handleStartGame}
                             handleNextPhase={handleNextPhase}
                             handleDayVote={handleDayVote}
                             handleNightAction={handleNightAction}
@@ -1271,9 +1590,6 @@
             // Menü Ekranı (Oda Seçimi)
             return (
                 <div className={`min-h-screen p-6 md:p-10 ${theme.bg} font-sans`}>
-                    <div className="fixed top-0 left-0 right-0 p-3 bg-yellow-700/80 text-white text-center text-sm font-semibold z-50">
-                       {error}
-                    </div>
                     <MenuScreen
                         userName={userName}
                         setUserName={setUserName}
@@ -1286,6 +1602,7 @@
         };
 
         // --- DOM'a Yerleştirme ---
+        // Uygulamanın çalışması için bu satır gereklidir
         ReactDOM.createRoot(document.getElementById('root')).render(<App />);
     </script>
 </body>
