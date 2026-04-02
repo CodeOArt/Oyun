@@ -2,1187 +2,495 @@
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Siber Savunma - Uzay Nişancısı</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Proİktisat - Mobil Uyumlu Ekonomi Platformu</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+        :root {
+            --primary: #0f172a; 
+            --secondary: #059669; 
+            --accent: #2563eb; 
+            --danger: #dc2626;
+            --warning: #d97706;
+            --bg: #f8fafc;
+            --card-bg: #ffffff;
+            --text-main: #334155;
+            --text-dark: #0f172a;
+            --border-light: #e2e8f0;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #0d1117;
-            color: white;
-            overflow-x: hidden;
-            cursor: crosshair;
-        }
+        /* Desktop Base Layout */
+        body { display: flex; height: 100vh; background-color: var(--bg); color: var(--text-main); overflow: hidden; }
+
+        /* Sidebar */
+        .sidebar { width: 300px; background: var(--primary); color: white; display: flex; flex-direction: column; z-index: 10; overflow-y: auto; flex-shrink: 0; box-shadow: 4px 0 15px rgba(0,0,0,0.05); }
+        .logo { padding: 25px 20px; font-size: 1.8rem; font-weight: 800; text-align: center; color: white; border-bottom: 1px solid rgba(255,255,255,0.1); flex-shrink: 0; }
+        .logo span { color: var(--secondary); }
+        .nav-btn { background: transparent; color: #cbd5e1; border: none; padding: 16px 25px; text-align: left; font-size: 1.05rem; cursor: pointer; transition: 0.3s; border-left: 4px solid transparent; flex-shrink: 0; }
+        .nav-btn:hover { background: rgba(5, 150, 105, 0.2); color: white; padding-left: 30px; }
+        .nav-btn.active { background: rgba(5, 150, 105, 0.4); border-left-color: var(--secondary); color: white; font-weight: bold; }
+
+        /* Content Area */
+        .content { flex: 1; overflow-y: auto; scroll-behavior: smooth; background: var(--bg); }
+        .content-inner { max-width: 1200px; margin: 0 auto; padding: 50px 40px; }
+        .section { display: none; opacity: 0; transform: translateY(15px); transition: all 0.4s ease-out; }
+        .section.active { display: block; opacity: 1; transform: translateY(0); }
+
+        /* Headers & Typography */
+        h1 { font-size: 2.4rem; color: var(--primary); margin-bottom: 20px; border-bottom: 4px solid var(--secondary); padding-bottom: 10px; display: inline-block; }
+        h2 { font-size: 1.6rem; color: var(--accent); margin: 35px 0 20px; display: flex; align-items: center; gap: 10px; }
+        h3 { font-size: 1.3rem; color: var(--text-dark); margin: 25px 0 10px; border-left: 4px solid var(--secondary); padding-left: 12px; }
+        p { font-size: 1.15rem; line-height: 1.8; margin-bottom: 15px; }
+        ul, ol { margin-left: 25px; margin-bottom: 15px; line-height: 1.8; font-size: 1.1rem; }
+        li { margin-bottom: 10px; }
+        .cite { font-size: 0.85rem; color: #94a3b8; vertical-align: super; font-weight: normal; margin-left: 4px; }
         
-        .game-screen {
-            position: relative;
-            width: 100%;
-            height: 100vh;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-            background: #0d1117; 
-        }
+        /* Modern Cards */
+        .card { background: var(--card-bg); padding: 35px; border-radius: 12px; box-shadow: 0 8px 20px -5px rgba(0,0,0,0.05); margin-bottom: 35px; border: 1px solid var(--border-light); }
+        .info-box { padding: 20px 25px; border-radius: 10px; font-weight: 500; margin: 25px 0; border-left: 6px solid; font-size: 1.15rem; line-height: 1.6; }
+        .info-warning { background: #fffbeb; border-color: var(--warning); color: #92400e; }
+        .info-success { background: #f0fdf4; border-color: var(--secondary); color: #064e3b; }
+        .info-primary { background: #eff6ff; border-color: var(--accent); color: #1e3a8a; }
 
-        .game-ui {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            padding: 20px;
-            display: flex;
-            justify-content: space-between;
-            z-index: 10;
-        }
+        /* Definition List Grid */
+        .def-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 25px; margin-top: 20px; }
+        .def-item { background: #f8fafc; padding: 25px; border-radius: 10px; border: 1px solid #e2e8f0; border-top: 5px solid var(--accent); transition: 0.3s; }
+        .def-item:hover { transform: translateY(-5px); box-shadow: 0 15px 30px -5px rgba(0,0,0,0.1); }
+        .def-title { font-weight: 800; color: var(--primary); font-size: 1.3rem; margin-bottom: 12px; display: block; }
+
+        /* Highlight & Tables */
+        .highlight { background-color: #fef08a; padding: 2px 8px; border-radius: 4px; color: #854d0e; font-weight: bold; }
         
-        .score-display, .lives-display, .ulti-display {
-            background: rgba(0, 0, 0, 0.7);
-            padding: 10px 20px;
-            border-radius: 10px;
-            font-size: 1.2rem;
-            backdrop-filter: blur(5px);
-            color: #00ffff;
-            border: 1px solid #00ffff50;
-        }
-        
-        .ulti-display.cooling-down {
-            color: #ff0066;
-            border-color: #ff006650;
-        }
-        
-        .game-area {
-            width: 100%;
-            height: 100%;
-            position: relative;
+        .table-responsive { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 10px; box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05); margin: 30px 0; }
+        .styled-table { width: 100%; border-collapse: collapse; font-size: 1.1rem; min-width: 600px; }
+        .styled-table thead tr { background-color: var(--accent); color: #ffffff; text-align: left; }
+        .styled-table th, .styled-table td { padding: 18px 25px; }
+        .styled-table tbody tr { border-bottom: 1px solid var(--border-light); background-color: #ffffff; }
+        .styled-table tbody tr:nth-of-type(even) { background-color: #f8fafc; }
+
+        /* Graph Container */
+        .graph-container { background: white; padding: 30px; border-radius: 12px; border: 1px solid var(--border-light); text-align: center; margin: 30px 0; box-shadow: 0 10px 30px rgba(0,0,0,0.06); }
+        .graph-container svg { width: 100%; max-width: 600px; height: auto; background: #fafafa; border-radius: 8px; padding: 10px; }
+        .graph-legend { display: flex; justify-content: center; flex-wrap: wrap; gap: 15px; margin-top: 15px; font-size: 1rem; font-weight: bold; }
+        .legend-item { display: flex; align-items: center; gap: 8px; }
+        .legend-color { width: 15px; height: 15px; border-radius: 3px; }
+
+        /* Quiz */
+        .q-box { border: 2px solid var(--border-light); padding: 25px; border-radius: 12px; margin-bottom: 25px; transition: 0.3s; background: white; }
+        .q-opt { display: flex; align-items: center; padding: 16px 20px; margin: 10px 0; background: #f8fafc; border: 1px solid var(--border-light); border-radius: 8px; cursor: pointer; transition: 0.2s; font-size: 1.1rem; }
+        .q-opt:hover { background: #f0fdf4; border-color: var(--secondary); }
+        .q-opt input { margin-right: 15px; transform: scale(1.4); flex-shrink: 0; }
+        .submit-btn { background: var(--secondary); color: white; font-size: 1.2rem; font-weight: bold; padding: 18px 40px; border: none; border-radius: 10px; cursor: pointer; display: block; width: 100%; max-width: 400px; margin: 40px auto; transition: 0.3s; text-align: center; }
+        .submit-btn:hover { background: #047857; transform: translateY(-3px); box-shadow: 0 10px 20px rgba(5, 150, 105, 0.3); }
+
+        /* =========================================
+           MOBILE RESPONSIVE (MEDIA QUERIES)
+           ========================================= */
+        @media (max-width: 900px) {
+            /* Switch from horizontal split to vertical stacking */
+            body { flex-direction: column; overflow-y: auto; }
+            
+            /* Sidebar becomes a horizontal scrolling top nav */
+            .sidebar { 
+                width: 100%; 
+                flex-direction: row; 
+                height: auto; 
+                overflow-x: auto; 
+                white-space: nowrap; 
+                padding-bottom: 5px; 
+                -webkit-overflow-scrolling: touch;
+            }
+            .logo { padding: 15px 20px; font-size: 1.4rem; border-bottom: none; border-right: 1px solid rgba(255,255,255,0.1); }
+            .nav-btn { padding: 15px 20px; font-size: 1rem; border-left: none; border-bottom: 4px solid transparent; }
+            .nav-btn:hover { padding-left: 20px; background: rgba(5, 150, 105, 0.2); }
+            .nav-btn.active { border-left-color: transparent; border-bottom-color: var(--secondary); }
+
+            /* Content Area Adjustments */
+            .content { overflow-y: visible; }
+            .content-inner { padding: 30px 20px; }
+            
+            h1 { font-size: 1.8rem; }
+            h2 { font-size: 1.4rem; }
+            p, ul, ol { font-size: 1.05rem; }
+            
+            .card { padding: 20px; }
+            .graph-container { padding: 15px; }
+            .q-box { padding: 15px; }
+            .q-opt { padding: 12px 15px; font-size: 1rem; }
         }
 
-        .player {
-            position: absolute;
-            bottom: 50px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 60px;
-            height: 60px;
-            background: var(--skin-color, #3b82f6);
-            border-radius: 50% 50% 0 0;
-            box-shadow: 0 0 20px var(--skin-color, #3b82f6);
-            transition: left 0.1s linear, box-shadow 0.3s ease, border 0.3s ease;
-            z-index: 5;
-            border: 3px solid transparent;
-        }
-
-        .player::before {
-            content: '';
-            position: absolute;
-            bottom: -10px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 30px;
-            height: 30px;
-            background: var(--skin-color, #3b82f6);
-            clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
-        }
-
-        .enemy {
-            position: absolute;
-            width: 40px;
-            height: 40px;
-            background: #ff0066;
-            border-radius: 50%;
-            box-shadow: 0 0 15px #ff0066;
-        }
-
-        .meteor {
-            position: absolute;
-            width: 20px;
-            height: 60px;
-            background: linear-gradient(to bottom, #ffae00, #ff4d00);
-            border-radius: 10px;
-            box-shadow: 0 0 20px #ff9900;
-            opacity: 0.9;
-        }
-
-        .bullet {
-            position: absolute;
-            width: 5px;
-            height: 15px;
-            background: #00ff99;
-            border-radius: 5px;
-            box-shadow: 0 0 10px #00ff99;
-        }
-
-        .explosion {
-            position: absolute;
-            width: 50px;
-            height: 50px;
-            background: radial-gradient(circle, #ff9900, #ff3300);
-            border-radius: 50%;
-            animation: explode 0.5s forwards;
-            z-index: 99;
-        }
-
-        @keyframes explode {
-            0% { transform: scale(0); opacity: 1; }
-            100% { transform: scale(2); opacity: 0; }
-        }
-
-        .stars {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 1;
-        }
-
-        .star {
-            position: absolute;
-            background: white;
-            border-radius: 50%;
-            animation: twinkle 5s infinite;
-        }
-
-        @keyframes twinkle {
-            0%, 100% { opacity: 0.2; }
-            50% { opacity: 1; }
-        }
-        
-        .hidden {
-            display: none !important;
+        @media (max-width: 480px) {
+            .logo { display: none; } /* Hide logo on very small screens to give nav more space */
+            .content-inner { padding: 20px 15px; }
+            h1 { font-size: 1.5rem; }
+            .def-grid { grid-template-columns: 1fr; } /* Stack definitions completely */
         }
     </style>
 </head>
 <body>
-    <div class="min-h-screen bg-gray-950 text-white font-sans">
-        <div class="fixed inset-0 z-0 opacity-5">
-            <div class="bg-repeat h-full w-full" style="background-image: radial-gradient(#2d3748 1px, transparent 1px); background-size: 40px 40px;"></div>
-        </div>
-        
-        <div class="relative z-10 max-w-6xl mx-auto px-4 py-8">
-            <div id="menuScreen" class="flex flex-col items-center justify-center text-center h-[70vh] p-8">
-                <div class="bg-gray-900 p-10 rounded-2xl border-4 border-blue-500/50 shadow-2xl shadow-blue-800/50 backdrop-blur-sm">
-                    <h1 class="text-6xl font-extrabold text-white tracking-tighter mb-2 animate-pulse">
-                        <span class='text-red-500'>SİBER</span> <span class='text-blue-400'>SAVUNMA</span>
-                    </h1>
-                    <p class="text-xl font-mono text-gray-400 mb-8">Uzay Nişancısı | Muş Üniversitesi Projesi</p>
-                    
-                    <div id="welcomeMessage" class="mb-6 text-red-400 font-semibold text-lg">
-                        Sunucuya bağlanılıyor...
-                    </div>
 
-                    <div class="space-y-4 max-w-xs mx-auto">
-                        <button id="startGameBtn" class="px-8 py-3 rounded-xl font-bold uppercase tracking-wider transition-all duration-300 transform bg-indigo-600 text-white shadow-lg shadow-indigo-500/50 hover:bg-indigo-700 active:scale-95 w-full opacity-50 cursor-not-allowed" disabled>
-                            Oturum Gerekli
-                        </button>
-                        <button id="rankingBtn" class="px-8 py-3 rounded-xl font-bold uppercase tracking-wider transition-all duration-300 transform bg-gray-700 text-gray-200 hover:bg-gray-600 active:scale-95 w-full">
-                            🏆 Galaksi Sıralaması
-                        </button>
-                        <button id="marketBtn" class="px-8 py-3 rounded-xl font-bold uppercase tracking-wider transition-all duration-300 transform bg-gray-700 text-gray-200 hover:bg-gray-600 active:scale-95 w-full">
-                            🛒 Gemi Pazarı
-                        </button>
-                        <button id="aboutBtn" class="px-8 py-3 rounded-xl font-bold uppercase tracking-wider transition-all duration-300 transform bg-gray-700 text-gray-200 hover:bg-gray-600 active:scale-95 w-full">
-                            📚 Hakkımızda
-                        </button>
-                         <button id="logoutBtn" class="px-8 py-3 rounded-xl font-bold uppercase tracking-wider transition-all duration-300 transform bg-red-800 text-gray-200 hover:bg-red-700 active:scale-95 w-full hidden">
-                            Çıkış Yap
-                        </button>
-                    </div>
-                </div>
-            </div>
-            
-            <div id="gameScreen" class="hidden">
-                <div class="game-screen">
-                    <div class="game-ui">
-                        <div class="score-display">SKOR: <span id="scoreValue">0</span></div>
-                        <div class="ulti-display hidden" id="ultiDisplay">ULTİ: <span id="ultiStatus">HAZIR</span></div>
-                        <div class="lives-display">CAN: <span id="livesValue">3</span></div>
-                    </div>
-                    <div class="game-area" id="gameArea">
-                        <div class="stars" id="starsContainer"></div>
-                        <div class="player" id="player"></div>
-                    </div>
-                </div>
-            </div>
-            
-            <div id="gameOverScreen" class="hidden flex flex-col items-center justify-center text-center h-[70vh] p-8">
-                <div class="bg-gray-900 p-10 rounded-2xl border-4 border-red-500 shadow-2xl shadow-red-800/50 backdrop-blur-sm">
-                    <h2 class="text-5xl font-extrabold text-red-500 mb-4">MİSYON SONA ERDİ!</h2>
-                    <p class="text-3xl font-mono text-white mb-6">Kazanılan Puan: <span id="finalScore" class="text-yellow-400 font-extrabold">0</span></p>
-                    <div class='text-gray-400 mb-8'>
-                        <p>Skorunuz sıralama ve toplam puanınıza eklendi.</p>
-                    </div>
-                    <div class="space-y-4 max-w-xs mx-auto">
-                        <button id="returnToMenuBtn" class="px-8 py-3 rounded-xl font-bold uppercase tracking-wider transition-all duration-300 transform bg-green-600 text-white shadow-lg shadow-green-500/50 hover:bg-green-700 active:scale-95 w-full">
-                            Menüye Dön
-                        </button>
-                        <button id="viewRankingBtn" class="px-8 py-3 rounded-xl font-bold uppercase tracking-wider transition-all duration-300 transform bg-gray-700 text-gray-200 hover:bg-gray-600 active:scale-95 w-full">
-                            🏆 Sıralamayı Gör
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div id="usernameModal" class="fixed inset-0 bg-gray-900 bg-opacity-90 z-50 flex items-center justify-center p-4">
-            <div class="bg-gray-800 text-white rounded-xl shadow-2xl w-full max-w-lg overflow-y-auto max-h-[90vh] border border-blue-500/50">
-                <div class="p-6">
-                    <div class="flex justify-between items-center mb-4 border-b border-gray-700 pb-3">
-                        <h2 class="text-2xl font-extrabold text-blue-400">Pilot Kayıt Merkezi</h2>
-                          </div>
-                    <p class="mb-4 text-gray-300">Sıralama listesinde ve oyunda görünmek için benzersiz bir kullanıcı adı girin (Maks. 15 karakter):</p>
-                    <form id="usernameForm" class="flex gap-2">
-                        <input
-                            id="usernameInput"
-                            name="username"
-                            type="text"
-                            maxlength="15"
-                            placeholder="Oyuncu Adı"
-                            class="flex-grow p-3 bg-gray-700 border border-blue-500 rounded-lg text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-400"
-                            autofocus
-                        />
-                        <button type="submit" id="usernameSubmitBtn" class="px-8 py-3 rounded-xl font-bold uppercase tracking-wider transition-all duration-300 transform bg-indigo-600 text-white shadow-lg shadow-indigo-500/50 hover:bg-indigo-700 active:scale-95">
-                            Kaydet
-                        </button>
-                    </form>
-                    <p id="usernameError" class="mt-4 text-sm text-red-400 hidden"></p>
-                </div>
-            </div>
-        </div>
-
-        <div id="rankingModal" class="fixed inset-0 bg-gray-900 bg-opacity-90 z-50 flex items-center justify-center p-4 hidden">
-            <div class="bg-gray-800 text-white rounded-xl shadow-2xl w-full max-w-2xl overflow-y-auto max-h-[90vh] border border-blue-500/50">
-                <div class="p-6">
-                    <div class="flex justify-between items-center mb-4 border-b border-gray-700 pb-3">
-                        <h2 class="text-2xl font-extrabold text-blue-400">🏆 Galaksi Sıralaması (Top 20)</h2>
-                        <button id="closeRankingModal" class="text-gray-400 hover:text-white transition duration-200 text-3xl leading-none">&times;</button>
-                    </div>
-                    <p class='text-gray-400 mb-4'>En yüksek tek oyun skorları.</p>
-                    <div id="rankingContent" class="overflow-x-auto">
-                        <div class="text-center py-8 text-blue-400">Sıralama yükleniyor...</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div id="marketModal" class="fixed inset-0 bg-gray-900 bg-opacity-90 z-50 flex items-center justify-center p-4 hidden">
-            <div class="bg-gray-800 text-white rounded-xl shadow-2xl w-full max-w-lg overflow-y-auto max-h-[90vh] border border-blue-500/50">
-                <div class="p-6">
-                    <div class="flex justify-between items-center mb-4 border-b border-gray-700 pb-3">
-                        <h2 class="text-2xl font-extrabold text-blue-400">🛒 Gemi Pazarı</h2>
-                        <button id="closeMarketModal" class="text-gray-400 hover:text-white transition duration-200 text-3xl leading-none">&times;</button>
-                    </div>
-                    <div id="marketContent" class="text-lg font-bold mb-4 text-center text-yellow-400">
-                        Toplam Puanınız: <span id="totalScore">0</span>
-                    </div>
-                    <div id="skinsContainer" class="space-y-4">
-                        <div class="text-center py-4 text-gray-400">Önce giriş yapmalısın...</div>
-                    </div>
-                    <p class="mt-6 text-sm text-gray-400">Marketten aldığınız skinler kalıcıdır ve Toplam Puanınızdan düşülür.</p>
-                </div>
-            </div>
-        </div>
-
-        <div id="aboutModal" class="fixed inset-0 bg-gray-900 bg-opacity-90 z-50 flex items-center justify-center p-4 hidden">
-            <div class="bg-gray-800 text-white rounded-xl shadow-2xl w-full max-w-lg overflow-y-auto max-h-[90vh] border border-blue-500/50">
-                <div class="p-6">
-                    <div class="flex justify-between items-center mb-4 border-b border-gray-700 pb-3">
-                        <h2 class="text-2xl font-extrabold text-blue-400">Hakkımızda</h2>
-                        <button id="closeAboutModal" class="text-gray-400 hover:text-white transition duration-200 text-3xl leading-none">&times;</button>
-                    </div>
-                    <div class="space-y-4 text-gray-300">
-                        <h3 class="text-xl font-bold text-blue-400">Proje Adı: MUŞ SİBER SAVUNMA (UZAY TEMASI)</h3>
-                        <p>
-                            **Geliştirme Amacı:** Muş Alparslan Üniversitesiiçin Web Tabanlı Oyun Geliştirme dersi/projesi kapsamında, yüksek performanslı DOM/CSS animasyonları ve modern web teknolojilerini kullanan profesyonel bir örnek olarak hazırlanmıştır.
-                        </p>
-                        <div class="border-t border-gray-700 pt-3">
-                            <h4 class="font-semibold text-white">Yapımcılar:</h4>
-                            <ul class="list-disc list-inside ml-4">
-                                <li>Halil İbrahim Eskici</li>
-                                <li>---</li>
-                                <li>--- 3</li>
-                            </ul>
-                        </div>
-                        <p class="text-xs text-gray-500">
-                            **Not:** Oyun, JavaScript DOM ile kontrol edilmektedir.
-                        </p>
-                    </div>
-                </div>
-            </div>
-        </div>
+    <div class="sidebar">
+        <div class="logo">Pro<span>İktisat</span></div>
+        <button class="nav-btn active" onclick="showSection('s1')">1. Temel Kavramlar</button>
+        <button class="nav-btn" onclick="showSection('s2')">2. Üretim & Faktörleri</button>
+        <button class="nav-btn" onclick="showSection('s3')">3. Karar Birimleri</button>
+        <button class="nav-btn" onclick="showSection('s4')">4. İktisadın Bölümleri</button>
+        <button class="nav-btn" onclick="showSection('s5')">5. Üretim Eğrisi (PPF)</button>
+        <button class="nav-btn" onclick="showSection('s6')">6. Sistemler & Akılcılık</button>
+        <button class="nav-btn" onclick="showSection('s7')">7. Talep ve Değişimi</button>
+        <button class="nav-btn" onclick="showSection('s8')">8. Fonk. Olmayan Talep</button>
+        <button class="nav-btn" onclick="showSection('s9')" style="color: #fcd34d;">9. Bütçe Kısıtı</button>
+        <button class="nav-btn" onclick="showSection('squiz')" style="background: var(--secondary); color: white; font-weight: bold;">Genel Deneme Sınavı</button>
     </div>
 
-    <script>
-        // --- YENİ EKLENDİ: FIREBASE CONFIG ---
-        // Kendi Firebase proje ayarlarını buraya yapıştır
-        const firebaseConfig = {
-            apiKey: "AIzaSyCtxhaGd7CgBvfQMLNOYkfjGdouMYH9fIE", // ESKİSİNİ KULLANMA!
-            authDomain: "oyun-e145e.firebaseapp.com",
-            projectId: "oyun-e145e",
-            storageBucket: "oyun-e145e.appspot.com", // 'firebasestorage' değil, .appspot.com olmalı
-            messagingSenderId: "600558322843",
-            appId: "1:600558322843:web:ea7c2bf5d5fb81f95d323e"
-            // databaseURL'e gerek yok, Firestore kullanıyoruz
-        };
-
-        // Firebase'i başlat
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.firestore();
-        const auth = firebase.auth();
-
-
-        // --- SABİT DEĞİŞKENLER VE AYARLAR ---
-        const GAME_DURATION = 45;
-        const SCORE_MULTIPLIER = 10;
-        const INITIAL_HEALTH = 3;
-        const ENEMY_SPAWN_INTERVAL = 1000;
-        const BULLET_SPAWN_INTERVAL = 300;
-        const ULTI_COOLDOWN = 60000; 
-
-        const SKIN_PRICES = [
-            { id: 'default', name: 'Varsayılan Gemi', price: 0, color: '#3b82f6' },
-            { id: 'red_fighter', name: 'Kızıl Avcı (Ulti: Taramalı)', price: 500, color: '#ef4444' },
-            { id: 'green_defender', name: 'Yeşil Savunucu (Ulti: Kalkan)', price: 5000, color: '#10b981' },
-            { id: 'yellow_blaster', name: 'Sarı Patlatıcı (Ulti: Bomba)', price: 50000, color: '#f59e0b' }
-        ];
-
-        // --- OYUN DEĞİŞKENLERİ ---
-        let gameState = 'MENU';
-        let currentUserId = null; // YENİ: Firebase user ID'sini tutar
-        let userName = '';
-        
-        // YENİ: userProfile artık Firebase'den yüklenen varsayılan bir nesne
-        let userProfile = {
-            username: '',
-            totalScore: 0,
-            unlockedSkins: ['default'],
-            currentSkin: 'default'
-        };
-
-        let gameVars = {
-            gameActive: false,
-            score: 0,
-            lives: INITIAL_HEALTH,
-            enemies: [],
-            bullets: [],
-            animationId: null,
-            lastEnemyTime: 0,
-            lastBulletTime: 0,
-            playerX: 0,
-            playerY: 0,
-            timerInterval: null,
-            timeLeft: GAME_DURATION,
-            ultiReady: true,
-            isShieldActive: false,
-            isRapidFireActive: false,
-            lastUltiTime: 0
-        };
-
-        // --- DOM ELEMENTLERİ ---
-        const menuScreen = document.getElementById('menuScreen');
-        const gameScreen = document.getElementById('gameScreen');
-        const gameOverScreen = document.getElementById('gameOverScreen');
-        const usernameModal = document.getElementById('usernameModal');
-        const rankingModal = document.getElementById('rankingModal');
-        const marketModal = document.getElementById('marketModal');
-        const aboutModal = document.getElementById('aboutModal');
-        const gameArea = document.getElementById('gameArea');
-        const player = document.getElementById('player');
-        const starsContainer = document.getElementById('starsContainer');
-        const scoreValue = document.getElementById('scoreValue');
-        const livesValue = document.getElementById('livesValue');
-        const finalScore = document.getElementById('finalScore');
-        const totalScore = document.getElementById('totalScore');
-        const welcomeMessage = document.getElementById('welcomeMessage');
-        const startGameBtn = document.getElementById('startGameBtn');
-        const skinsContainer = document.getElementById('skinsContainer');
-        const ultiDisplay = document.getElementById('ultiDisplay');
-        const ultiStatus = document.getElementById('ultiStatus');
-        const logoutBtn = document.getElementById('logoutBtn');
-        const usernameForm = document.getElementById('usernameForm');
-        const usernameInput = document.getElementById('usernameInput');
-        const usernameError = document.getElementById('usernameError');
-        const usernameSubmitBtn = document.getElementById('usernameSubmitBtn');
-
-
-        // --- YENİ EKLENDİ: FIREBASE API (TEMİZLENMİŞ VERSİYON) ---
-        
-        const firebaseAPI = {
-            // Kullanıcı adı veritabanında var mı diye kontrol et
-            checkUsernameExists: async (username) => {
-                console.log(`Firebase'de kontrol ediliyor: ${username}`);
-                // GERÇEK KOD: 'usernames' koleksiyonunda bu isimde bir doküman var mı diye bak.
-                const snapshot = await db.collection('usernames').doc(username).get();
-                return snapshot.exists;
-            },
-
-            // Yeni kullanıcı için profil ve kullanıcı adı oluştur
-            createUserProfile: async (uid, username) => {
-                console.log(`Firebase'e kaydediliyor: ${uid} -> ${username}`);
-                const defaultProfile = {
-                    username: username,
-                    totalScore: 0,
-                    unlockedSkins: ['default'],
-                    currentSkin: 'default'
-                };
-                
-                // GERÇEK KOD: İki işlemi aynı anda yapmak için 'batch' (toplu işlem) kullan.
-                const batch = db.batch();
-                
-                // 1. Kullanıcı adını 'usernames' koleksiyonuna ekle (hızlı kontrol için)
-                const usernameRef = db.collection('usernames').doc(username);
-                batch.set(usernameRef, { uid: uid });
-                
-                // 2. Kullanıcının profilini 'users' koleksiyonuna ekle
-                const userRef = db.collection('users').doc(uid);
-                batch.set(userRef, defaultProfile);
-                
-                // Her iki işlemi de gerçekleştir
-                await batch.commit();
-                
-                return defaultProfile;
-            },
-
-            // Firebase'den kullanıcı profilini yükle
-            loadUserProfile: async (uid) => {
-                console.log(`Firebase'den yükleniyor: ${uid}`);
-                
-                // GERÇEK KOD: Kullanıcının profil belgesini ID'sine göre çek.
-                const doc = await db.collection('users').doc(uid).get();
-                if (doc.exists) {
-                    return doc.data();
-                } else {
-                    // Kullanıcı var ama profili yoksa (anormal durum)
-                    console.error("Hata: Kullanıcı profili bulunamadı!", uid);
-                    return null; 
-                }
-            },
-
-            // Oyuncunun toplam skorunu güncelle
-            updateTotalScore: async (uid, newTotalScore) => {
-                console.log(`Firebase güncelleniyor: ${uid} -> totalScore: ${newTotalScore}`);
-                // GERÇEK KOD: Sadece 'totalScore' alanını güncelle.
-                await db.collection('users').doc(uid).update({ totalScore: newTotalScore });
-            },
-
-            // Yeni bir yüksek skoru sıralamaya ekle
-            saveGameScore: async (username, score) => {
-                if (score <= 0) return; // 0 puanı kaydetme
-                console.log(`Firebase'e skor kaydediliyor: ${username} -> ${score}`);
-                // GERÇEK KOD: 'highscores' koleksiyonuna yeni bir belge ekle.
-                await db.collection('highscores').add({
-                    username: username,
-                    score: score,
-                    timestamp: firebase.firestore.FieldValue.serverTimestamp() // Sunucu saatini kullan
-                });
-            },
-
-            // Sıralama listesini (en yüksek 20) Firebase'den çek
-            getHighScores: async () => {
-                console.log("Firebase'den sıralama çekiliyor...");
-                // GERÇEK KOD: 'highscores' koleksiyonunu skora göre (büyükten küçüğe) sırala ve ilk 20'yi al.
-                const snapshot = await db.collection('highscores')
-                                        .orderBy('score', 'desc')
-                                        .limit(20)
-                                        .get();
-                // Dataları bir diziye çevirip döndür.
-                return snapshot.docs.map(doc => doc.data());
-            },
+    <div class="content" id="mainContent">
+        <div class="content-inner">
             
-            // Skinleri ve puanı kaydet (market alışverişi sonrası)
-            saveUserProfileData: async (uid, profileData) => {
-                console.log(`Firebase'e profil kaydediliyor: ${uid}`);
-                // GERÇEK KOD: Gönderilen profil verisini (örn: { currentSkin: 'id' }) güncelle.
-                await db.collection('users').doc(uid).update(profileData);
-            }
-        };
-
-
-        // --- OYUN BAŞLATMA ---
-        document.addEventListener('DOMContentLoaded', function() {
-            setupEventListeners();
-            createStars();
-            
-            // YENİ: Firebase Auth durumunu dinle
-            auth.onAuthStateChanged(async (user) => {
-                if (user) {
-                    // Kullanıcı giriş yapmış
-                    currentUserId = user.uid;
-                    
-                    // Profili yükle
-                    const profile = await firebaseAPI.loadUserProfile(currentUserId);
-                    if (profile) {
-                        userProfile = profile;
-                        userName = profile.username;
-                        updateWelcomeMessage();
-                        usernameModal.classList.add('hidden');
-                        logoutBtn.classList.remove('hidden');
-                    } else {
-                        // Veritabanında profil yoksa (anormal durum), çıkış yaptır
-                        auth.signOut();
-                    }
-                } else {
-                    // Kullanıcı giriş yapmamış
-                    currentUserId = null;
-                    userName = '';
-                    userProfile = { // Profili sıfırla
-                        username: '',
-                        totalScore: 0,
-                        unlockedSkins: ['default'],
-                        currentSkin: 'default'
-                    };
-                    welcomeMessage.innerHTML = 'Lütfen oynamadan önce bir kullanıcı adı belirleyin.';
-                    welcomeMessage.className = 'mb-6 text-red-400 font-semibold text-lg';
-                    startGameBtn.innerHTML = 'Oturum Gerekli';
-                    startGameBtn.disabled = true;
-                    startGameBtn.classList.add('opacity-50', 'cursor-not-allowed');
-                    logoutBtn.classList.add('hidden');
-                    
-                    // Kullanıcı adı modalını göster
-                    usernameModal.classList.remove('hidden');
-                    usernameSubmitBtn.disabled = false;
-                    usernameSubmitBtn.textContent = 'Kaydet';
-                }
-            });
-        });
-
-        // --- EVENT LISTENER'LAR ---
-        function setupEventListeners() {
-            // YENİ: Kullanıcı adı formu (Kayıt/Benzersizlik kontrolü)
-            usernameForm.addEventListener('submit', async function(e) {
-                e.preventDefault();
-                const requestedUsername = usernameInput.value.trim();
+            <div id="s1" class="section active">
+                <h1>1) İktisada Giriş ve Temel Kavramlar</h1>
+                <div class="info-box info-success">
+                    <b>İktisat:</b> Sınırlı ve yetersiz olan mal-hizmet paylaşımını, toplumun kıt kaynaklarının değerlendirilmesini ve sorunları inceleyen, sonsuz olan istek ve arzuların kıt kaynaklarla nasıl koordine edileceğini araştıran <b>sosyal bilimdir</b> <span class="cite"></span>.
+                </div>
                 
-                if (requestedUsername.length < 3) {
-                    usernameError.textContent = 'Kullanıcı adı en az 3 karakter olmalı.';
-                    usernameError.classList.remove('hidden');
-                    return;
-                }
+                <div class="def-grid">
+                    <div class="def-item"><span class="def-title">Kıtlık ve Tercih</span>İnsan isteklerinin bu istekleri tatmin edecek kaynaklardan fazla olması durumudur. Kıtlık nedeniyle tercih yapmak zorunda kalırız <span class="cite"></span>.</div>
+                    <div class="def-item"><span class="def-title">Fırsat Maliyeti</span>Bir şeyi elde etmek için vazgeçilen <span class="highlight">en iyi alternatif</span>tir <span class="cite"></span>.</div>
+                    <div class="def-item"><span class="def-title">İstekler (Zorunlu/Zorunlu Olmayan)</span>Beslenme ve barınma zorunlu istekler iken, spor araba zorunlu olmayan istektir. Ancak bu durum toplumun gelişmişlik düzeyine göre değişebilir <span class="cite"></span>.</div>
+                </div>
 
-                usernameSubmitBtn.disabled = true;
-                usernameSubmitBtn.textContent = 'Kontrol...';
-                usernameError.classList.add('hidden');
+                <div class="card" style="margin-top: 30px;">
+                    <h2>Mallar ve Hizmetler <span class="cite"></span></h2>
+                    <div class="def-grid">
+                        <div class="def-item" style="border-top-color: var(--secondary);"><b>İktisadi Mal:</b> Elde etmek için çaba veya bedel ödenmesi gereken, kıt kaynakları kullanan mallardır.<br><br><b>Serbest Mallar:</b> Doğada her istendiğinde bulunabilen, maliyeti olmayan mallardır.</div>
+                        <div class="def-item" style="border-top-color: var(--secondary);"><b>Tüketim (Nihai) Malları:</b> Tüketicinin ihtiyacını doğrudan karşılar (Gıda).<br><br><b>Üretim (Sermaye) Malları:</b> Başka malların üretiminde kullanılır (Fırıncının fırını). Aynı mal kullanım amacına göre iki sınıfa da girebilir.</div>
+                        <div class="def-item" style="border-top-color: var(--secondary);"><b>Dayanıklı:</b> En az 3 yıl fayda sağlayanlar.<br><b>Dayanıksız:</b> Tüketildiğinde yok olanlar.<br><br><b>Hizmetler:</b> Stoklanamayan fiziki/zihinsel emektir (Kişisel ve Ticari olarak ayrılır).</div>
+                    </div>
+                </div>
+            </div>
 
-                try {
-                    const exists = await firebaseAPI.checkUsernameExists(requestedUsername);
-                    
-                    if (exists) {
-                        // Kullanıcı adı alınmış
-                        usernameError.textContent = 'Bu kullanıcı adı zaten alınmış. Başka bir tane dene.';
-                        usernameError.classList.remove('hidden');
-                        usernameSubmitBtn.disabled = false;
-                        usernameSubmitBtn.textContent = 'Kaydet';
-                    } else {
-                        // Kullanıcı adı uygun, kayıt işlemi
-                        usernameSubmitBtn.textContent = 'Kaydediliyor...';
+            <div id="s2" class="section">
+                <h1>2) Üretim ve Üretim Faktörleri</h1>
+                <p><b>Üretim:</b> İktisadi ürünün miktarını veya faydasını artırmak amacıyla harcanan çabalardır. Üretim ile Şekil, Yer, Zaman ve Mülkiyet faydası yaratılır <span class="cite"></span>.</p>
+                
+                <h2>Üretim Faktörleri ve Getirileri <span class="cite"></span></h2>
+                <div class="def-grid">
+                    <div class="def-item" style="border-top-color: #8b4513;"><span class="def-title">🌍 Toprak ➔ Rant</span>Sadece tarım alanı değil, mineral, orman ve okyanusları da kapsayan doğal kaynaklardır.</div>
+                    <div class="def-item" style="border-top-color: #2563eb;"><span class="def-title">💪 Emek ➔ Ücret</span>Mal ve hizmet üretimine katkı yapan kişilerin fiziksel ve zihinsel eylemleridir (girişim yeteneği hariçtir).</div>
+                    <div class="def-item" style="border-top-color: #d97706;"><span class="def-title">⚙️ Sermaye ➔ Faiz</span>İnsan yapımı üretici varlıklardır (fabrika, makine). <span class="highlight">Finansal varlıklar (para, hisse) sermaye tanımına girmez!</span></div>
+                    <div class="def-item" style="border-top-color: #9333ea;"><span class="def-title">🧠 Girişimcilik ➔ Kâr</span>Diğer faktörleri bir araya getiren, yeni yöntemler geliştiren ve <b>üretimin tüm riskini üstlenen</b> faktördür.</div>
+                </div>
+            </div>
+
+            <div id="s3" class="section">
+                <h1>3) Temel Karar Birimleri ve Yöntem</h1>
+                <p>İktisadi aktörler: <b>Hanehalkı</b> (ortak finansal karar alanlar), <b>Firmalar</b> (üretim faktörlerini satın alıp mal satanlar) ve <b>Devlet</b>'tir (mülkiyet haklarını düzenler, vergi alır) <span class="cite"></span>.</p>
+                
+                <div class="card">
+                    <h2>İktisadi Analizlerde Sık Yapılan Hatalar <span class="cite"></span></h2>
+                    <ul>
+                        <li><b>Ceteris Paribus:</b> Diğer şeyler sabitken varsayımıdır. İki değişken arasındaki ilişkiye odaklanmak için diğer tüm etkenlerin sabit kaldığı varsayılır.</li>
+                        <li><b>Terkip Hatası:</b> Birey için iyi olan bir şeyin (örn: maçta ayağa kalkmak), grup/toplum için de iyi olacağının düşünülmesi yanılgısıdır.</li>
+                        <li><b>Nedenseme Yanlışlığı:</b> Zamanlama nedeniyle yapılan hatalardır. Arka arkaya olan iki olaya bakarak "birinci olay ikincisine neden oldu" demek yanıltıcı olabilir.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div id="s4" class="section">
+                <h1>4) İktisadın Bölümleri</h1>
+                <div class="def-grid">
+                    <div class="def-item" style="border-top-color: var(--warning);"><span class="def-title">🔍 Mikro İktisat</span>Ekonominin bireysel parçalarını inceler. Bireysel firmalar, tüketici davranışı ve belirli bir malın talebi gibi konulara odaklanır <span class="cite"></span>.</div>
+                    <div class="def-item" style="border-top-color: var(--accent);"><span class="def-title">🌍 Makro İktisat</span>Ekonomiyi bir bütün olarak inceler. Milli gelir, enflasyon, ekonomik büyüme ve toplam talep gibi toplulaştırılmış davranışlara bakar <span class="cite"></span>.</div>
+                </div>
+                <div class="card" style="margin-top: 30px;">
+                    <h2>Pozitif ve Normatif İktisat <span class="cite"></span></h2>
+                    <p><b>Pozitif İktisat:</b> Ne olduğu ile ilgilenir. Gerçeklere ve bilimsel açıklamalara dayanır, değer yargısı içermez.</p>
+                    <p><b>Normatif İktisat:</b> Ne olması gerektiği ile ilgilenir. Değer yargılarına dayanarak politikalar tavsiye eder.</p>
+                </div>
+            </div>
+
+            <div id="s5" class="section">
+                <h1>5) Üretim İmkanları Modeli (PPF)</h1>
+                <p>Bir toplumun mevcut tüm kaynaklar ve teknoloji ile üretebileceği malların maksimum alternatif bileşimlerini gösterir <span class="cite"></span>.</p>
+                
+                <div class="card">
+                    <h2>Modelin 4 Temel Varsayımı <span class="cite"></span></h2>
+                    <ol>
+                        <li>Üretim faktörlerinin miktarı <b>sabittir</b>.</li>
+                        <li>Tüm kaynaklar <b>tam olarak</b> kullanılmaktadır (İşsizlik veya atıl kapasite yoktur).</li>
+                        <li>Teknoloji <b>değişmemektedir</b>.</li>
+                        <li>Sadece <b>iki mal</b> üretildiği varsayılır.</li>
+                    </ol>
+                </div>
+
+                <div class="graph-container">
+                    <h2>Üretimde Etkinlik ve Büyüme Grafiksel Analizi</h2>
+                    <svg viewBox="0 0 600 400" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
+                        <line x1="60" y1="40" x2="60" y2="340" stroke="#0f172a" stroke-width="2.5" marker-end="url(#arrow)"/>
+                        <line x1="60" y1="340" x2="540" y2="340" stroke="#0f172a" stroke-width="2.5" marker-end="url(#arrow)"/>
+                        <text x="10" y="50" font-family="sans-serif" font-size="16" font-weight="bold">Konut</text>
+                        <text x="500" y="380" font-family="sans-serif" font-size="16" font-weight="bold">Füze</text>
+                        <text x="40" y="360" font-family="sans-serif" font-size="16">0</text>
                         
-                        // Önce anonim olarak giriş yap
-                        const userCredential = await auth.signInAnonymously();
-                        const uid = userCredential.user.uid;
+                        <path d="M 60 100 Q 300 120 480 340" fill="transparent" stroke="#059669" stroke-width="4"/>
+                        <text x="380" y="240" font-family="sans-serif" font-size="16" font-weight="bold" fill="#059669">PPF 1</text>
                         
-                        // Sonra profili oluştur
-                        const newProfile = await firebaseAPI.createUserProfile(uid, requestedUsername);
+                        <path d="M 60 60 Q 350 80 520 340" fill="transparent" stroke="#2563eb" stroke-width="2" stroke-dasharray="8,4"/>
+                        <text x="440" y="190" font-family="sans-serif" font-size="16" font-weight="bold" fill="#2563eb">PPF 2 (Büyüme)</text>
                         
-                        // Global değişkenleri ayarla (onAuthStateChanged de tetiklenecek ama
-                        // biz yine de anında güncelleyelim)
-                        currentUserId = uid;
-                        userProfile = newProfile;
-                        userName = newProfile.username;
+                        <circle cx="180" cy="123" r="7" fill="#dc2626"/>
+                        <text x="175" y="110" font-family="sans-serif" font-size="18" font-weight="bold">B</text>
                         
-                        updateWelcomeMessage();
-                        usernameModal.classList.add('hidden');
-                        logoutBtn.classList.remove('hidden');
-                    }
-                } catch (error) {
-                    console.error("Kayıt hatası:", error);
-                    usernameError.textContent = 'Bir hata oluştu. Lütfen tekrar deneyin.';
-                    usernameError.classList.remove('hidden');
-                    usernameSubmitBtn.disabled = false;
-                    usernameSubmitBtn.textContent = 'Kaydet';
-                }
-            });
-            
-            // Menu Buttons
-            startGameBtn.addEventListener('click', startGame);
-            document.getElementById('rankingBtn').addEventListener('click', showRanking);
-            document.getElementById('marketBtn').addEventListener('click', showMarket);
-            document.getElementById('aboutBtn').addEventListener('click', showAbout);
-            logoutBtn.addEventListener('click', () => auth.signOut()); // Çıkış yap
-            
-            // Game Over Buttons
-            document.getElementById('returnToMenuBtn').addEventListener('click', returnToMenu);
-            document.getElementById('viewRankingBtn').addEventListener('click', showRanking);
-            
-            // Modal Close Buttons
-            document.getElementById('closeRankingModal').addEventListener('click', () => rankingModal.classList.add('hidden'));
-            document.getElementById('closeMarketModal').addEventListener('click', () => marketModal.classList.add('hidden'));
-            document.getElementById('closeAboutModal').addEventListener('click', () => aboutModal.classList.add('hidden'));
-        }
+                        <circle cx="280" cy="160" r="7" fill="#dc2626"/>
+                        <text x="295" y="155" font-family="sans-serif" font-size="18" font-weight="bold">C</text>
+                        
+                        <circle cx="390" cy="235" r="7" fill="#dc2626"/>
+                        <text x="405" y="230" font-family="sans-serif" font-size="18" font-weight="bold">D</text>
 
-        // --- EKRAN YÖNETİMİ ---
-        function showScreen(screen) {
-            menuScreen.classList.add('hidden');
-            gameScreen.classList.add('hidden');
-            gameOverScreen.classList.add('hidden');
-            
-            if (screen === 'menu') {
-                menuScreen.classList.remove('hidden');
-            } else if (screen === 'game') {
-                gameScreen.classList.remove('hidden');
-            } else if (screen === 'gameOver') {
-                gameOverScreen.classList.remove('hidden');
-            }
-        }
+                        <circle cx="280" cy="270" r="7" fill="#d97706"/>
+                        <text x="260" y="290" font-family="sans-serif" font-size="18" font-weight="bold">G</text>
 
-        function updateWelcomeMessage() {
-            if (userName) {
-                welcomeMessage.innerHTML = `HOŞ GELDİN, <span class='text-yellow-300 uppercase'>${userName}</span>!<div class='text-base text-gray-400 mt-1'>Toplam Puan: <span class='text-yellow-500'>${userProfile.totalScore}</span></div>`;
-                welcomeMessage.className = 'mb-6 text-green-400 font-semibold text-lg animate-fade-in';
-                startGameBtn.innerHTML = '🚀 Oyuna Başla';
-                startGameBtn.disabled = false;
-                startGameBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-            }
-        }
+                        <circle cx="350" cy="120" r="7" fill="#475569"/>
+                        <text x="365" y="115" font-family="sans-serif" font-size="18" font-weight="bold">H</text>
 
-        // --- OYUN FONKSİYONLARI ---
-        function startGame() {
-            if (!currentUserId) return; // Giriş yapılmadıysa başlatma
-            
-            gameVars.score = 0;
-            gameVars.lives = INITIAL_HEALTH;
-            gameVars.enemies = [];
-            gameVars.bullets = [];
-            gameVars.timeLeft = GAME_DURATION;
-            gameVars.lastEnemyTime = 0;
-            
-            gameVars.ultiReady = true;
-            gameVars.isShieldActive = false;
-            gameVars.isRapidFireActive = false;
-            gameVars.lastUltiTime = 0;
-            updateUltiUI(); 
-            
-            scoreValue.textContent = '0';
-            livesValue.textContent = INITIAL_HEALTH;
-            
-            const allDynamicElements = gameArea.querySelectorAll('.enemy, .bullet, .explosion, .meteor');
-            allDynamicElements.forEach(el => el.remove());
-            
-            player.style.left = (gameArea.offsetWidth / 2) - (player.offsetWidth / 2) + 'px';
-            gameVars.playerX = (gameArea.offsetWidth / 2) - (player.offsetWidth / 2);
-            player.style.border = '3px solid transparent'; 
-            
-            const skinColor = SKIN_PRICES.find(s => s.id === userProfile.currentSkin)?.color || '#3b82f6';
-            player.style.setProperty('--skin-color', skinColor);
-            player.style.boxShadow = `0 0 20px ${skinColor}`; 
-            
-            showScreen('game');
-            gameVars.gameActive = true;
-            
-            gameLoop();
-            
-            document.addEventListener('mousemove', handleMouseMove);
-            gameArea.addEventListener('click', activateUlti); 
-            
-            gameVars.timerInterval = setInterval(() => {
-                if (!gameVars.gameActive) return;
-                
-                gameVars.timeLeft--;
-                
-                if (gameVars.timeLeft <= 0) {
-                    endGame();
-                }
-            }, 1000);
-        }
-
-        async function endGame() { // YENİ: Fonksiyon async oldu
-            gameVars.gameActive = false;
-            cancelAnimationFrame(gameVars.animationId);
-            clearInterval(gameVars.timerInterval);
-            document.removeEventListener('mousemove', handleMouseMove);
-            gameArea.removeEventListener('click', activateUlti); 
-            
-            ultiDisplay.classList.add('hidden');
-            
-            const dynamicElements = gameArea.querySelectorAll('.enemy, .bullet, .explosion, .meteor');
-            dynamicElements.forEach(el => el.remove());
-            
-            // Skoru güncelle
-            finalScore.textContent = gameVars.score;
-            
-            // YENİ: Skoru Firebase'e kaydet
-            if (gameVars.score > 0) {
-                // Toplam skoru güncelle
-                userProfile.totalScore += gameVars.score;
-                totalScore.textContent = userProfile.totalScore;
-                
-                // Asenkron olarak veritabanına kaydet
-                try {
-                    await firebaseAPI.saveGameScore(userName, gameVars.score);
-                    await firebaseAPI.updateTotalScore(currentUserId, userProfile.totalScore);
-                } catch (error) {
-                    console.error("Skor kaydetme hatası:", error);
-                }
-            }
-            
-            // Ekranı değiştir
-            showScreen('gameOver');
-        }
-
-        function returnToMenu() {
-            showScreen('menu');
-            // Menüye dönünce hoş geldin mesajını da güncelle (yeni toplam puanı göstersin)
-            updateWelcomeMessage();
-        }
-
-        // --- OYUN MANTIĞI ---
-        function gameLoop() {
-            if (!gameVars.gameActive) {
-                return;
-            }
-            
-            const currentTime = Date.now();
-            
-            if (!gameVars.ultiReady) {
-                const timeSinceUlti = Date.now() - gameVars.lastUltiTime;
-                if (timeSinceUlti > ULTI_COOLDOWN) {
-                    gameVars.ultiReady = true;
-                    updateUltiUI();
-                }
-            }
-            
-            const elapsedSeconds = GAME_DURATION - gameVars.timeLeft;
-            const difficultyMultiplier = 1 + (elapsedSeconds / GAME_DURATION) * 0.8; 
-            const currentSpawnInterval = ENEMY_SPAWN_INTERVAL / difficultyMultiplier; 
-            
-            if (currentTime - gameVars.lastEnemyTime > currentSpawnInterval) {
-                createEnemy(difficultyMultiplier); 
-                gameVars.lastEnemyTime = currentTime;
-            }
-            
-            const currentBulletInterval = gameVars.isRapidFireActive ? 50 : BULLET_SPAWN_INTERVAL;
-            if (currentTime - gameVars.lastBulletTime > currentBulletInterval) {
-                createBullet();
-                gameVars.lastBulletTime = currentTime;
-            }
-            
-            moveEnemies();
-            moveBullets();
-            checkCollisions();
-            
-            gameVars.animationId = requestAnimationFrame(gameLoop);
-        }
-
-        function handleMouseMove(e) {
-            if (!gameVars.gameActive) return;
-            
-            const gameRect = gameArea.getBoundingClientRect();
-            let newPlayerX = e.clientX - gameRect.left - player.offsetWidth / 2;
-            
-            if (newPlayerX < 0) newPlayerX = 0;
-            if (newPlayerX > gameRect.width - player.offsetWidth) {
-                newPlayerX = gameRect.width - player.offsetWidth;
-            }
-            
-            gameVars.playerX = newPlayerX;
-            player.style.left = newPlayerX + 'px';
-        }
-
-        function createStars() {
-            starsContainer.innerHTML = '';
-            for (let i = 0; i < 100; i++) {
-                const star = document.createElement('div');
-                star.className = 'star';
-                star.style.width = Math.random() * 3 + 'px';
-                star.style.height = star.style.width;
-                star.style.left = Math.random() * 100 + '%';
-                star.style.top = Math.random() * 100 + '%';
-                star.style.animationDelay = Math.random() * 5 + 's';
-                starsContainer.appendChild(star);
-            }
-        }
-
-        function createEnemy(multiplier = 1) {
-            const isMeteor = Math.random() < 0.15; 
-            
-            const element = document.createElement('div');
-            let speed, width, height;
-
-            if (isMeteor) {
-                element.className = 'meteor';
-                width = 20;
-                height = 60;
-                speed = (3 + Math.random() * 3) * multiplier; 
-            } else {
-                element.className = 'enemy';
-                width = 40;
-                height = 40;
-                speed = (1 + Math.random() * 2) * multiplier;
-            }
-            
-            element.style.left = Math.random() * (gameArea.offsetWidth - width) + 'px';
-            element.style.top = `-${height}px`;
-            gameArea.appendChild(element);
-            
-            gameVars.enemies.push({
-                element: element,
-                x: parseInt(element.style.left),
-                y: -height,
-                speed: speed,
-                width: width,
-                height: height,
-                isMeteor: isMeteor
-            });
-        }
-
-        function createBullet() {
-            if (!player || !gameVars.gameActive) return;
-            
-            const bullet = document.createElement('div');
-            bullet.className = 'bullet';
-            
-            const bulletX = gameVars.playerX + player.offsetWidth / 2 - 2.5;
-            const bulletY = player.offsetTop - 15;
-            
-            bullet.style.left = bulletX + 'px';
-            bullet.style.top = bulletY + 'px';
-            gameArea.appendChild(bullet);
-            
-            gameVars.bullets.push({
-                element: bullet,
-                x: bulletX,
-                y: bulletY,
-                speed: 15,
-                width: 5,
-                height: 15
-            });
-        }
-
-        function moveEnemies() {
-            for (let i = gameVars.enemies.length - 1; i >= 0; i--) {
-                const enemy = gameVars.enemies[i];
-                enemy.y += enemy.speed;
-                enemy.element.style.top = enemy.y + 'px';
-                
-                if (enemy.y > gameArea.offsetHeight) {
-                    enemy.element.remove();
-                    gameVars.enemies.splice(i, 1);
-                    if (!gameVars.isShieldActive) {
-                        loseLife(enemy.isMeteor ? 2 : 1); 
-                    }
-                }
-            }
-        }
-
-        function moveBullets() {
-            for (let i = gameVars.bullets.length - 1; i >= 0; i--) {
-                const bullet = gameVars.bullets[i];
-                bullet.y -= bullet.speed;
-                bullet.element.style.top = bullet.y + 'px';
-                
-                if (bullet.y < -15) {
-                    bullet.element.remove();
-                    gameVars.bullets.splice(i, 1);
-                }
-            }
-        }
-
-        function checkCollisions() {
-            // Mermi-Düşman
-            for (let i = gameVars.bullets.length - 1; i >= 0; i--) {
-                const bullet = gameVars.bullets[i];
-                
-                for (let j = gameVars.enemies.length - 1; j >= 0; j--) {
-                    const enemy = gameVars.enemies[j];
+                        <line x1="300" y1="168" x2="350" y2="128" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
+                        <line x1="400" y1="250" x2="450" y2="210" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
+                        
+                        <defs>
+                            <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#0f172a" /></marker>
+                            <marker id="arrow-blue" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#2563eb" /></marker>
+                        </defs>
+                    </svg>
                     
-                    if (
-                        bullet.x < enemy.x + enemy.width &&
-                        bullet.x + bullet.width > enemy.x &&
-                        bullet.y < enemy.y + enemy.height &&
-                        bullet.y + bullet.height > enemy.y
-                    ) {
-                        createExplosion(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2);
-                        bullet.element.remove();
-                        gameVars.bullets.splice(i, 1);
-                        enemy.element.remove();
-                        gameVars.enemies.splice(j, 1);
-                        gameVars.score += (enemy.isMeteor ? SCORE_MULTIPLIER * 2 : SCORE_MULTIPLIER);
-                        scoreValue.textContent = gameVars.score;
-                        break;
-                    }
-                }
-            }
-            
-            if (gameVars.isShieldActive) return;
+                    <div class="graph-legend">
+                        <div class="legend-item"><div class="legend-color" style="background:#dc2626;"></div> B, C, D (Etkin)</div>
+                        <div class="legend-item"><div class="legend-color" style="background:#d97706;"></div> G (Etkin Değil/Atıl)</div>
+                        <div class="legend-item"><div class="legend-color" style="background:#475569;"></div> H (Erişilemez)</div>
+                    </div>
+                </div>
 
-            // Oyuncu-Düşman
-            const playerWidth = 60;
-            const playerHeight = 60;
-            const playerY = player.offsetTop;
-            
-            for (let i = gameVars.enemies.length - 1; i >= 0; i--) {
-                const enemy = gameVars.enemies[i];
-                
-                if (
-                    gameVars.playerX < enemy.x + enemy.width &&
-                    gameVars.playerX + playerWidth > enemy.x &&
-                    playerY < enemy.y + enemy.height &&
-                    playerY + playerHeight > enemy.y
-                ) {
-                    createExplosion(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2);
-                    enemy.element.remove();
-                    gameVars.enemies.splice(i, 1);
-                    loseLife(enemy.isMeteor ? 2 : 1);
-                    break;
-                }
-            }
-        }
+                <div class="info-box info-primary">
+                    <b>Grafik Analizi:</b> Eğri üzerindeki noktalar (B, C, D) <b>üretimde etkinliği</b> temsil eder. Eğrinin içindeki <b>G noktası</b> kaynakların atıl kaldığını, eğrinin dışındaki <b>H noktası</b> ise mevcut teknolojiyle ulaşılamayacak bölgeyi gösterir <span class="cite"></span>.<br><br>
+                    Eğrinin sağa kayması <b>İktisadi Büyüme</b>'dir. Nedenleri kaynak miktarındaki artış veya teknolojik gelişmedir <span class="cite"></span>.
+                </div>
+            </div>
 
-        function loseLife(amount = 1) {
-            if (!gameVars.gameActive) return;
-            gameVars.lives -= amount;
-            
-            if (gameVars.lives < 0) {
-                 gameVars.lives = 0;
-            }
-            livesValue.textContent = gameVars.lives;
-            
-            if (gameVars.lives <= 0) {
-                endGame();
-            }
-        }
+            <div id="s6" class="section">
+                <h1>6) İktisadi Sorun, Sistemler ve Akılcılık</h1>
+                <p>İktisadi Sorun, her toplumun cevaplaması gereken 3 temel sorudur: <b>Hangi mallar ne kadar üretilecek? Nasıl üretilecek? Kimin için üretilecek?</b> <span class="cite"></span></p>
 
-        function createExplosion(x, y) {
-            const explosion = document.createElement('div');
-            explosion.className = 'explosion';
-            explosion.style.left = (x - 25) + 'px';
-            explosion.style.top = (y - 25) + 'px';
-            gameArea.appendChild(explosion);
-            
-            setTimeout(() => {
-                explosion.remove();
-            }, 500);
-        }
+                <div class="def-grid" style="margin-bottom: 30px;">
+                    <div class="def-item"><span class="def-title">Kapitalizm</span>Özel mülkiyet vardır, kararlar piyasa ve fiyat mekanizması ile alınır <span class="cite"></span>.</div>
+                    <div class="def-item"><span class="def-title">Sosyalizm</span>Kolektif mülkiyet hakimdir, kararlar merkezi planlama örgütü tarafından alınır <span class="cite"></span>.</div>
+                    <div class="def-item"><span class="def-title">Karma Sistem</span>Piyasa mekanizması ile devlet müdahalesinin birleşimidir <span class="cite"></span>.</div>
+                </div>
 
-        // --- ULTİ FONKSİYONLARI ---
+                <div class="card">
+                    <h2>Homo Economicus (Rasyonel İnsan) <span class="cite"></span></h2>
+                    <ol>
+                        <li><b>Tam bilgiye sahip olma:</b> Eksik bilgiyle karar alınmaz.</li>
+                        <li><b>Seçici olma:</b> Faydayı maksimize edecek olan seçilir.</li>
+                        <li><b>Çoğu aza tercih etme:</b> Doyumsuzluk varsayımıdır.</li>
+                        <li><b>Tercihlerde tutarlı olma:</b> Geçişkenlik varsayımıdır.</li>
+                    </ol>
+                </div>
+            </div>
 
-        function updateUltiUI() {
-            ultiDisplay.classList.toggle('hidden', userProfile.currentSkin === 'default');
+            <div id="s7" class="section">
+                <h1>7) Talep Eğrisi ve Kaymalar</h1>
+                <p>Talep kanununa göre, diğer şeyler sabitken malın kendi fiyatı düştükçe talep edilen miktar artar <span class="cite"></span>.</p>
 
-            if (gameVars.ultiReady) {
-                ultiStatus.textContent = 'HAZIR';
-                ultiDisplay.classList.remove('cooling-down');
-            } else {
-                ultiStatus.textContent = 'KULLANILDI';
-                ultiDisplay.classList.add('cooling-down');
-            }
-        }
+                <div class="graph-container">
+                    <h2>Talebin Değişmesi (Eğrinin Kayması)</h2>
+                    <svg viewBox="0 0 600 350" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
+                        <line x1="60" y1="40" x2="60" y2="300" stroke="#0f172a" stroke-width="2.5" marker-end="url(#arrow)"/>
+                        <line x1="60" y1="300" x2="540" y2="300" stroke="#0f172a" stroke-width="2.5" marker-end="url(#arrow)"/>
+                        <text x="20" y="50" font-family="sans-serif" font-size="16" font-weight="bold">P (Fiyat)</text>
+                        <text x="450" y="340" font-family="sans-serif" font-size="16" font-weight="bold">Q (Miktar)</text>
+                        
+                        <line x1="160" y1="80" x2="380" y2="280" stroke="#059669" stroke-width="3"/>
+                        <text x="390" y="280" font-family="sans-serif" font-size="18" font-weight="bold" fill="#059669">D0</text>
 
-        function activateUlti() {
-            if (!gameVars.gameActive || !gameVars.ultiReady || userProfile.currentSkin === 'default') {
-                return;
-            }
-            
-            gameVars.ultiReady = false;
-            gameVars.lastUltiTime = Date.now();
-            updateUltiUI();
-            
-            switch (userProfile.currentSkin) {
-                case 'red_fighter':
-                    ulti_RapidFire();
-                    break;
-                case 'green_defender':
-                    ulti_Shield();
-                    break;
-                case 'yellow_blaster':
-                    ulti_Nuke();
-                    break;
-            }
-        }
+                        <line x1="260" y1="80" x2="480" y2="280" stroke="#2563eb" stroke-width="3" stroke-dasharray="6,4"/>
+                        <text x="490" y="280" font-family="sans-serif" font-size="18" font-weight="bold" fill="#2563eb">D1 (Artış)</text>
+                        
+                        <line x1="60" y1="80" x2="280" y2="280" stroke="#dc2626" stroke-width="3" stroke-dasharray="6,4"/>
+                        <text x="290" y="295" font-family="sans-serif" font-size="18" font-weight="bold" fill="#dc2626">D2 (Azalış)</text>
 
-        function ulti_Nuke() {
-            const enemiesToExplode = [...gameVars.enemies];
-            enemiesToExplode.forEach(enemy => {
-                createExplosion(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2);
-                gameVars.score += (enemy.isMeteor ? SCORE_MULTIPLIER * 2 : SCORE_MULTIPLIER);
-            });
-            gameArea.querySelectorAll('.enemy, .meteor').forEach(el => el.remove());
-            gameVars.enemies = [];
-            scoreValue.textContent = gameVars.score;
-        }
+                        <line x1="280" y1="180" x2="350" y2="180" stroke="#2563eb" stroke-width="3" marker-end="url(#arrow-blue)"/>
+                        <line x1="250" y1="180" x2="180" y2="180" stroke="#dc2626" stroke-width="3" marker-end="url(#arrow-red)"/>
 
-        function ulti_Shield() {
-            gameVars.isShieldActive = true;
-            player.style.boxShadow = '0 0 40px #00ffff';
-            player.style.border = '3px solid #00ffff';
+                        <defs>
+                            <marker id="arrow-red" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#dc2626" /></marker>
+                        </defs>
+                    </svg>
+                </div>
 
-            setTimeout(() => {
-                gameVars.isShieldActive = false;
-                const skinColor = SKIN_PRICES.find(s => s.id === userProfile.currentSkin)?.color || '#3b82f6';
-                player.style.boxShadow = `0 0 20px ${skinColor}`;
-                player.style.border = '3px solid transparent';
-            }, 5000); 
-        }
-
-        function ulti_RapidFire() {
-            gameVars.isRapidFireActive = true;
-            setTimeout(() => {
-                gameVars.isRapidFireActive = false;
-            }, 3000);
-        }
-
-
-        // --- MODAL FONKSİYONLARI ---
-        async function showRanking() { // YENİ: async oldu
-            rankingModal.classList.remove('hidden');
-            const rankingContent = document.getElementById('rankingContent');
-            rankingContent.innerHTML = '<div class="text-center py-8 text-blue-400">Sıralama yükleniyor...</div>';
-
-            try {
-                // YENİ: Sıralamayı Firebase'den çek
-                const highScores = await firebaseAPI.getHighScores();
-                
-                if (highScores.length === 0) {
-                     rankingContent.innerHTML = '<div class="text-center py-8 text-gray-400">Henüz hiç skor kaydedilmemiş.</div>';
-                     return;
-                }
-
-                let rankingHTML = `
-                    <div class="overflow-x-auto">
-                        <table class="min-w-full divide-y divide-gray-700">
+                <div class="card">
+                    <h2>Talep Eğrisini Kaydıran Faktörler <span class="cite"></span></h2>
+                    <div class="table-responsive">
+                        <table class="styled-table">
                             <thead>
-                                <tr class="text-left text-gray-400 text-sm">
-                                    <th class="px-4 py-2">Sıra</th>
-                                    <th class="px-4 py-2">Kullanıcı Adı</th>
-                                    <th class="px-4 py-2 text-right">Yüksek Skor</th>
-                                    <th class="px-4 py-2 text-right">Oynanma Zamanı</th>
+                                <tr>
+                                    <th>Talep Eğrisini Sağa Kaydıran (Artıran)</th>
+                                    <th>Talep Eğrisini Sola Kaydıran (Azaltan)</th>
                                 </tr>
                             </thead>
-                            <tbody class="divide-y divide-gray-800">
-                `;
-                
-                highScores.forEach((entry, index) => {
-                    // Firebase timestamp'ini Date nesnesine çevir
-                    const date = entry.timestamp ? entry.timestamp.toDate().toLocaleDateString('tr-TR') : 'Bilinmiyor';
-                    const isCurrentUser = entry.username === userName;
-                    
-                    rankingHTML += `
-                        <tr class="transition-all duration-300 ${isCurrentUser ? 'bg-blue-900/50 text-yellow-400 font-bold' : 'text-gray-200 hover:bg-gray-700/50'}">
-                            <td class="px-4 py-2">${index + 1}</td>
-                            <td class="px-4 py-2">${entry.username}</td>
-                            <td class="px-4 py-2 text-right">${entry.score}</td>
-                            <td class="px-4 py-2 text-right text-xs">${date}</td>
-                        </tr>
-                    `;
-                });
-                
-                rankingHTML += `</tbody></table></div>`;
-                rankingContent.innerHTML = rankingHTML;
+                            <tbody>
+                                <tr><td>Tüketicinin <b>gelirinin</b> artması (Normal mal için)</td><td>Tüketicinin <b>gelirinin</b> azalması</td></tr>
+                                <tr><td><b>İkame mallarının</b> fiyatlarının artması</td><td><b>İkame mallarının</b> fiyatlarının azalması</td></tr>
+                                <tr><td><b>Tamamlayıcı malların</b> fiyatlarının düşmesi</td><td><b>Tamamlayıcı malların</b> fiyatlarının artması</td></tr>
+                                <tr><td><b>Zevk ve tercihlerin</b> malın lehine değişmesi</td><td><b>Zevk ve tercihlerin</b> malın aleyhine değişmesi</td></tr>
+                                <tr><td>Malın fiyatının <b>artacağının</b> beklenmesi</td><td>Malın fiyatının <b>azalacağının</b> beklenmesi</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
 
-            } catch (error) {
-                console.error("Sıralama yüklenemedi:", error);
-                rankingContent.innerHTML = '<div class="text-center py-8 text-red-400">Sıralama yüklenirken bir hata oluştu.</div>';
-            }
+            <div id="s8" class="section">
+                <h1>8) Fonksiyonel Olmayan Talep</h1>
+                <p>Tüketicinin bir malı niteliklerinden ziyade "diğer kişilerin o mala olan taleplerine" bakarak almasıdır <span class="cite"></span>.</p>
+
+                <div class="def-grid">
+                    <div class="def-item" style="border-top-color: #3b82f6;">
+                        <span class="def-title">1) Bandwagon (Sürüye Katılma)</span>
+                        Kişiler başlarda almadıkları bir malı, çevresindekilerin satın aldığını görünce "herkes alıyor, bende de olmalı" diyerek alırlar <span class="cite"></span>.
+                    </div>
+                    <div class="def-item" style="border-top-color: #f59e0b;">
+                        <span class="def-title">2) Snop (Sürüden Ayrılma)</span>
+                        Kibirli kişilerin sıradan halkın alamayacağı malları almasıdır. Fiyatı düşen bir malı <b>almayı terk ederler</b> <span class="cite"></span>.
+                    </div>
+                    <div class="def-item" style="border-top-color: #dc2626;">
+                        <span class="def-title">3) Veblen (Gösteriş)</span>
+                        Malın fiyatı <b>yükseldikçe</b> gösteriş yapmak için daha çok satın alınmasıdır. (Örn: Lüks arabalar) <span class="cite"></span>.
+                    </div>
+                </div>
+            </div>
+
+            <div id="s9" class="section">
+                <h1>9) Tüketici Bütçe Kısıtı</h1>
+                <p>Tüketicinin belirli bir gelirle (I) veri fiyatlardan (Px, Py) alabileceği maksimum mal miktarını gösteren kısıttır <span class="cite"></span>.</p>
+                <div class="info-box info-warning" style="text-align: center; font-size: 1.4rem;">
+                    <b>Denklem:</b> Px · X + Py · Y ≤ I
+                </div>
+
+                <div class="graph-container">
+                    <h2>Bütçe Doğrusu Grafiği</h2>
+                    <svg viewBox="0 0 500 350" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
+                        <line x1="60" y1="40" x2="60" y2="300" stroke="#0f172a" stroke-width="2.5" marker-end="url(#arrow)"/>
+                        <line x1="60" y1="300" x2="480" y2="300" stroke="#0f172a" stroke-width="2.5" marker-end="url(#arrow)"/>
+                        <text x="35" y="50" font-family="sans-serif" font-size="18" font-weight="bold">Y</text>
+                        <text x="460" y="340" font-family="sans-serif" font-size="18" font-weight="bold">X</text>
+                        <text x="40" y="320" font-family="sans-serif" font-size="16">0</text>
+                        
+                        <line x1="60" y1="80" x2="380" y2="300" stroke="#dc2626" stroke-width="3"/>
+                        
+                        <text x="10" y="85" font-family="sans-serif" font-size="16" font-weight="bold">I/Py</text>
+                        <text x="365" y="330" font-family="sans-serif" font-size="16" font-weight="bold">I/Px</text>
+
+                        <text x="210" y="160" font-family="sans-serif" font-size="16" font-weight="bold" fill="#dc2626">Eğim = -(Px / Py)</text>
+                        <path d="M 220 190 Q 200 230 150 250" fill="transparent" stroke="#0f172a" stroke-width="1.5" marker-end="url(#arrow)"/>
+                        <text x="110" y="270" font-family="sans-serif" font-size="14" fill="#64748b">Bütçe Seti</text>
+                    </svg>
+                </div>
+
+                <div class="card">
+                    <h2>Bütçe Doğrusundaki Değişmeler <span class="cite"></span></h2>
+                    <ul>
+                        <li><b>Gelir (I) Değişirse:</b> Fiyatlar sabitken gelir artarsa bütçe doğrusu eğimi bozulmadan paralel olarak sağa kayar.</li>
+                        <li><b>Fiyat (Px veya Py) Değişirse:</b> Sadece X malının fiyatı (Px) yükselirse, I/Px noktası orijine yaklaşır (sola kayar) ve doğru <b>dikleşir</b>. Px düşerse doğru <b>yatıklaşır</b>.</li>
+                        <li><b>Eğim:</b> Doğrunun eğimi <b>-Px/Py</b> oranıdır. Bu oran paranın tüketici için oluşturduğu marjinal dönüşüm oranını (MRT) verir.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div id="squiz" class="section">
+                <h1 style="color: var(--secondary);">Genel Deneme Sınavı</h1>
+                <p>Tüm konuları kapsayan 15 soruluk final sınavı.</p>
+                
+                <div id="quiz-container"></div>
+                <button class="submit-btn" onclick="evalQuiz()">Sınavı Bitir ve Analizi Gör</button>
+                <div id="quiz-result" style="margin-top:20px; padding:25px; font-size:1.3rem; text-align:center; font-weight:bold; border-radius:12px; display:none; background:white; border: 2px solid var(--border-light);"></div>
+            </div>
+
+        </div> 
+    </div> 
+
+    <script>
+        // Navigation Logic
+        function showSection(id) {
+            document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+            document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+            event.currentTarget.classList.add('active');
+            document.getElementById('mainContent').scrollTop = 0;
         }
 
-        function showMarket() {
-            if (!currentUserId) {
-                // Giriş yapılmadıysa marketi göstermeden önce uyar
-                alert("Marketi görmek için önce bir kullanıcı adı oluşturmalısın.");
-                return;
-            }
-            marketModal.classList.remove('hidden');
-            totalScore.textContent = userProfile.totalScore;
-            loadSkins();
-        }
+        // Quiz Logic
+        const qs = [
+            { q: "Bir şeyi elde etmek için vazgeçilen en iyi alternatife ne ad verilir?", opts: ["Ceteris Paribus", "Fırsat Maliyeti", "Terkip Hatası", "Rant"], ans: 1, exp: "Fırsat Maliyeti (Alternatif Maliyet), bir şeyi elde etmek için vazgeçilen en iyi alternatiftir." },
+            { q: "Aşağıdakilerden hangisi sermaye faktörüne bir örnek DEĞİLDİR?", opts: ["Fabrika", "Makine ekipmanları", "Hisse senedi (Finansal Varlık)", "Dağıtım araçları"], ans: 2, exp: "İktisatçı açısından sermaye fiziki üretici varlıklardır; para ve hisse senedi gibi finansal varlıklar sermaye sayılmaz." },
+            { q: "Üretim İmkanları Eğrisinin (PPF) içinde kalan bir nokta (G noktası) neyi ifade eder?", opts: ["Ekonomik büyümeyi", "Erişilemez kapasiteyi", "Tam istihdamı", "Atıl kapasiteyi (İşsizlik / Kaynak İsrafı)"], ans: 3, exp: "Eğrinin içindeki nokta erişilebilirdir ancak tüm kaynaklar kullanılmadığı için atıl kapasiteyi temsil eder." },
+            { q: "Ekonominin 'nasıl olması gerektiği' konusunda değer yargıları kullanan iktisat bölümü hangisidir?", opts: ["Pozitif İktisat", "Normatif İktisat", "Mikro İktisat", "Makro İktisat"], ans: 1, exp: "Normatif iktisat değer yargıları içerir ve kural koyucudur." },
+            { q: "Gelir arttığında talebi AZALAN (talep eğrisi sola kayan) mallara ne ad verilir?", opts: ["Normal Mal", "Düşük Mal", "İkame Mal", "Veblen Malı"], ans: 1, exp: "Normal malların talebi gelirle artarken, düşük malların talebi gelirle ters orantılıdır." },
+            { q: "Bütçe doğrusunun eğimini veren formül aşağıdakilerden hangisidir?", opts: ["Px + Py", "- Px / Py", "I / Px", "Py / Px"], ans: 1, exp: "Bütçe doğrusunun eğimi, iki malın fiyatları oranı olan -Px/Py dir." },
+            { q: "Sadece X malının fiyatı (Px) artarsa bütçe doğrusunda nasıl bir değişim olur?", opts: ["Doğru paralel olarak sağa kayar", "Doğru paralel olarak sola kayar", "X eksenini kestiği nokta orijine yaklaşır (doğru dikleşir)", "Y eksenini kestiği nokta yukarı kayar"], ans: 2, exp: "Px artarsa I/Px azalır, nokta sola kayar ve eğri dikleşir." },
+            { q: "Tüketicilerin 'moda olduğu için' sürü psikolojisiyle bir malı satın almasına ne ad verilir?", opts: ["Veblen Etkisi", "Snop Etkisi", "Bandwagon Etkisi", "İkame Etkisi"], ans: 2, exp: "Başkalarından geri kalmamak için satın alma eylemine Bandwagon (Sürüye Katılma) etkisi denir." },
+            { q: "Tüketicinin, gösteriş yapmak arzusuyla fiyatı YÜKSELEN maldan daha fazla satın almasına ne ad verilir?", opts: ["Snop Etkisi", "Veblen Etkisi", "Bandwagon Etkisi", "Giffen Paradoksu"], ans: 1, exp: "Lüks eşyalarda 'sadece bende olsun' mantığıyla fiyat arttıkça talebin artmasına Veblen Etkisi denir." },
+            { q: "Devletin kaynakların mülkiyetine sahip olduğu ve merkezi planlamanın uygulandığı iktisadi sistem hangisidir?", opts: ["Kapitalizm", "Sosyalist İktisadi Sistem", "Karma İktisadi Sistem", "Piyasa Sistemi"], ans: 1, exp: "Sosyalist sistem devlet mülkiyeti ve merkezi planlama ile çalışır." },
+            { q: "Birey için iyi olan bir şeyin, grup/toplum için de iyi olacağının düşünülmesi yanılgısına ne ad verilir?", opts: ["Ceteris Paribus", "Nedenseme Yanlışlığı", "Geçişkenlik Varsayımı", "Terkip Hatası"], ans: 3, exp: "Makro düzeyde yanıltıcı olan bu duruma Terkip Hatası denir." },
+            { q: "Homo economicus'un (Rasyonel İnsan) 'Doyumsuzluk varsayımı' hangisini ifade eder?", opts: ["Tercihler arasında tutarlı olma", "Çoğu aza tercih etmek", "Tam bilgiye sahip olma", "Seçici olma"], ans: 1, exp: "Rasyonel insanın doyumsuzluğu, her zaman çoğu aza tercih edeceğinin varsayılmasıdır." },
+            { q: "Tamamlayıcı bir malın fiyatı arttığında ilgili malın talep eğrisinde ne olur?", opts: ["Sağa kayar (Talep artar)", "Sola kayar (Talep azalır)", "Eğri üzerinde hareket olur", "Değişmez"], ans: 1, exp: "Tamamlayıcı mallar birlikte tüketilir (Çay-Şeker). Şeker fiyatı artarsa çayın da talebi düşer (sola kayar)." },
+            { q: "Sadece malın kendi fiyatının düşmesi grafikte nasıl bir etkiye neden olur?", opts: ["Talep eğrisini sağa kaydırır", "Talep eğrisini sola kaydırır", "Talep eğrisi üzerinde (aşağı doğru) hareket yaratır", "Arz eğrisini kaydırır"], ans: 2, exp: "Malın kendi fiyatının değişmesi eğriyi kaydırmaz, miktar ekseninde eğri üzerinde harekete neden olur." },
+            { q: "Fiyatı düştüğünde ve herkes tarafından alınabilir hale geldiğinde, o malı almayı terk etme eylemine ne denir?", opts: ["Bandwagon Etkisi", "Veblen Etkisi", "Snop Etkisi", "Ceteris Paribus"], ans: 2, exp: "Sürüden ayrılma ve 'herkeste varsa ben almam' eylemine Snop (Züppe) etkisi denir." }
+        ];
 
-        function loadSkins() {
-            skinsContainer.innerHTML = '';
-            
-            SKIN_PRICES.forEach(skin => {
-                const isUnlocked = userProfile.unlockedSkins.includes(skin.id);
-                const isEquipped = skin.id === userProfile.currentSkin;
+        const qCont = document.getElementById('quiz-container');
+        qs.forEach((item, idx) => {
+            let optsHTML = item.opts.map((opt, i) => `<label class="q-opt"><input type="radio" name="q${idx}" value="${i}"> ${opt}</label>`).join('');
+            qCont.innerHTML += `<div class="q-box" id="qbox-${idx}"><h3 style="color:var(--primary); margin-bottom:15px;">${idx+1}. ${item.q}</h3>${optsHTML}<div id="qfeed-${idx}" style="margin-top:15px; font-weight:bold; display:none; padding:15px; border-radius:8px; background:#f8fafc; border-left: 5px solid var(--secondary);"></div></div>`;
+        });
+
+        function evalQuiz() {
+            let sc = 0;
+            qs.forEach((item, idx) => {
+                const sel = document.querySelector(`input[name="q${idx}"]:checked`);
+                const box = document.getElementById(`qbox-${idx}`);
+                const feed = document.getElementById(`qfeed-${idx}`);
+                feed.style.display = "block";
                 
-                const skinElement = document.createElement('div');
-                skinElement.className = `p-4 rounded-lg flex justify-between items-center transition-all duration-300 ${isEquipped ? 'bg-blue-900/70 border-2 border-yellow-500' : 'bg-gray-700 hover:bg-gray-600'}`;
-                
-                skinElement.innerHTML = `
-                    <div class="flex flex-col">
-                        <span class="${isEquipped ? 'text-yellow-300' : 'text-white'} text-xl font-extrabold">${skin.name}</span>
-                        <span class="text-sm text-gray-400">
-                            ${isUnlocked ? 'AÇIK' : `Fiyat: ${skin.price} Puan`}
-                        </span>
-                    </div>
-                    <div id="skinBtn-${skin.id}">
-                        ${isEquipped 
-                            ? '<button class="px-4 py-2 rounded-lg font-bold bg-green-600 text-white opacity-50 cursor-not-allowed" disabled>AKTİF</button>' 
-                            : isUnlocked 
-                                ? `<button class="px-4 py-2 rounded-lg font-bold bg-indigo-600 text-white hover:bg-indigo-700" onclick="equipSkin('${skin.id}')">KUŞAN</button>`
-                                : `<button class="px-4 py-2 rounded-lg font-bold bg-indigo-600 text-white hover:bg-indigo-700 ${userProfile.totalScore < skin.price ? 'opacity-50 cursor-not-allowed' : ''}" ${userProfile.totalScore < skin.price ? 'disabled' : ''} onclick="buySkin('${skin.id}')">${userProfile.totalScore < skin.price ? 'YETERSİZ' : 'SATIN AL'}</button>`
-                        }
-                    </div>
-                `;
-                
-                skinsContainer.appendChild(skinElement);
+                if (sel) {
+                    if (parseInt(sel.value) === item.ans) {
+                        sc++;
+                        box.style.borderColor = "var(--secondary)";
+                        feed.style.borderLeftColor = "var(--secondary)";
+                        feed.innerHTML = `✅ <b>Doğru!</b> <br><span style="font-weight:normal; font-size:1.05rem; color:var(--text-main);">${item.exp}</span>`;
+                    } else {
+                        box.style.borderColor = "var(--danger)";
+                        feed.style.borderLeftColor = "var(--danger)";
+                        feed.innerHTML = `❌ <b>Yanlış!</b> <br><span style="font-weight:normal; font-size:1.05rem; color:var(--text-main);">${item.exp}</span>`;
+                    }
+                } else {
+                    box.style.borderColor = "var(--warning)";
+                    feed.style.borderLeftColor = "var(--warning)";
+                    feed.innerHTML = `⚠️ <b>Boş bıraktın!</b> <br><span style="font-weight:normal; font-size:1.05rem; color:var(--text-main);">${item.exp}</span>`;
+                }
             });
-        }
-
-        async function buySkin(skinId) { // YENİ: async oldu
-            const skin = SKIN_PRICES.find(s => s.id === skinId);
-            if (!skin || !currentUserId) return;
             
-            if (userProfile.totalScore >= skin.price) {
-                userProfile.totalScore -= skin.price;
-                userProfile.unlockedSkins.push(skinId);
-                totalScore.textContent = userProfile.totalScore;
-                
-                // Değişiklikleri Firebase'e kaydet
-                try {
-                    await firebaseAPI.saveUserProfileData(currentUserId, {
-                        totalScore: userProfile.totalScore,
-                        unlockedSkins: userProfile.unlockedSkins
-                    });
-                } catch (error) {
-                    console.error("Skin alımı kaydedilemedi:", error);
-                    // Hata durumunda (isteğe bağlı) işlemi geri alabilirsin
-                }
-                
-                loadSkins(); // Marketi yenile
+            const res = document.getElementById('quiz-result');
+            res.style.display = "block";
+            if(sc >= 13) {
+                res.innerHTML = `🎉 HARİKA! Puan: <span style="color:var(--secondary); font-size:1.8rem;">${sc}/${qs.length}</span><br><span style="font-weight:normal;">İktisat bilgin mükemmel seviyede!</span>`;
+                res.style.borderColor = "var(--secondary)";
+            } else if(sc >= 8) {
+                res.innerHTML = `👍 İYİ İŞ! Puan: <span style="color:var(--accent); font-size:1.8rem;">${sc}/${qs.length}</span><br><span style="font-weight:normal;">Güzel, ancak Bütçe Kısıtı ve PPF noktalarını tekrar gözden geçir.</span>`;
+                res.style.borderColor = "var(--accent)";
+            } else {
+                res.innerHTML = `💪 VAZGEÇMEK YOK! Puan: <span style="color:var(--danger); font-size:1.8rem;">${sc}/${qs.length}</span><br><span style="font-weight:normal;">Konu anlatımlarını ve yeni grafikleri baştan dikkatlice incelemelisin.</span>`;
+                res.style.borderColor = "var(--danger)";
             }
-        }
-
-        async function equipSkin(skinId) { // YENİ: async oldu
-            if (userProfile.unlockedSkins.includes(skinId) && currentUserId) {
-                userProfile.currentSkin = skinId;
-                
-                // Değişikliği Firebase'e kaydet
-                try {
-                    await firebaseAPI.saveUserProfileData(currentUserId, {
-                        currentSkin: skinId
-                    });
-                } catch (error) {
-                    console.error("Skin kuşanma kaydedilemedi:", error);
-                }
-                
-                loadSkins(); // Marketi yenile
-                
-                // Gemi rengini anında değiştir (eğer oyun alanındaysa)
-                if (gameVars.gameActive) {
-                    const skinColor = SKIN_PRICES.find(s => s.id === skinId)?.color || '#3b82f6';
-                    player.style.setProperty('--skin-color', skinColor);
-                    player.style.boxShadow = `0 0 20px ${skinColor}`;
-                    player.style.border = '3px solid transparent';
-                }
-            }
-        }
-
-        function showAbout() {
-            // DÜZELTİLDİ: 'hidden' sınıfını kaldır
-            aboutModal.classList.remove('hidden');
+            res.scrollIntoView({ behavior: 'smooth' });
         }
     </script>
 </body>
